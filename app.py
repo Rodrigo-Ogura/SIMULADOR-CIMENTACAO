@@ -14,7 +14,7 @@ from src.utils.logger import logger
 
 # Configuração da página Streamlit
 st.set_page_config(
-    page_title="Cementing Simulator & Engineering Suite | OpenLab Style",
+    page_title="Simulador de Cimentação & Engenharia de Poço | Poli-USP",
     layout="wide",
     page_icon="🛢️",
     initial_sidebar_state="collapsed"
@@ -172,16 +172,16 @@ if 'aditivos_db' not in st.session_state:
 st.markdown("""
 <div class="rig-header">
     <div class="rig-title">
-        <span>🛢️ CEMENTING SIMULATOR & ENGINEERING SUITE</span>
+        <span>🛢️ SIMULADOR DE CIMENTAÇÃO & ENGENHARIA DE POÇO</span>
         <span class="rig-badge">API SPEC 10A / 10B</span>
-        <span class="rig-badge">HYDRAULIC CORE v2.4</span>
+        <span class="rig-badge">NÚCLEO HIDRÁULICO v2.4</span>
     </div>
     <div class="rig-status">
-        <span><span class="status-dot"></span> SIMULATOR READY</span>
+        <span><span class="status-dot"></span> SISTEMA PRONTO</span>
         <span>|</span>
-        <span>UNITS: OILFIELD (US/API)</span>
+        <span>UNIDADES: CAMPO DE PETRÓLEO (US/API)</span>
         <span>|</span>
-        <span>BOURGOYNE ET AL. COMPLIANT</span>
+        <span>CONFORME BOURGOYNE ET AL.</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
