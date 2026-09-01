@@ -39,7 +39,7 @@ Documento de registro contínuo de evolução, alterações de código, testes e
 - Criação do [`GEMINI.md`](./GEMINI.md) e reorganização total da pasta `docs/` em 3 níveis de profundidade (Fundamentos, Sistema/IA, Acadêmico/Normativo).
 
 ### [Sessão 7 e 8] - Modernização Visual OpenLab, Deploy Online e Guardrails de Lama (Sessão Atual)
-- **Data/Hora de Encerramento:** 2026-09-01 16:00
+- **Data/Hora de Encerramento:** 2026-09-01 16:05
 - **O que foi realizado:**
   1. **Recomendação de Programa Completo Bi-Pasta (Lead + Tail Slurry):**
      - IA projeta de forma autônoma a pasta leve de topo (12.0 a 13.8 ppg) com extensores e a pasta pesada de fundo (15.6 a 16.5 ppg) com retardadores/sílica.
@@ -54,8 +54,8 @@ Documento de registro contínuo de evolução, alterações de código, testes e
      - Criação de `.gitignore` para proteção absoluta de chaves locais (`.env`).
      - Suporte em `config.py` a `st.secrets` criptografados.
      - Configuração de autoria e envio oficial para [github.com/Rodrigo-Ogura/SIMULADOR-CIMENTACAO](https://github.com/Rodrigo-Ogura/SIMULADOR-CIMENTACAO).
-  5. **Documentação e Protocolo de Encerramento (`logoff`):**
-     - Atualização completa de `docs/` e `README.md`.
+  5. **Atualização Completa do README.md:**
+     - Seção dedicada de acesso online e deploy no Streamlit Cloud com diagrama de arquitetura.
      - Todos os módulos Python compilados com zero erros (`python -m py_compile`).
 
 ---
