@@ -1,16 +1,17 @@
 """
-Serviço de gerenciamento e persistência de aditivos (JSON).
+Serviço de gerenciamento, persistência e formatação do catálogo de aditivos (JSON).
 """
 
 import json
 import os
 from typing import Dict
+import pandas as pd
 from config import DATA_DIR, DB_FILE, ADITIVOS_PADRAO
 from src.utils.logger import logger
 
 
 class AditivoService:
-    """Gerencia a leitura e gravação de aditivos em arquivo JSON."""
+    """Gerencia a leitura, gravação e formatação de aditivos em arquivo JSON e DataFrame."""
 
     @staticmethod
     def inicializar_banco() -> Dict[str, dict]:
@@ -38,6 +39,18 @@ class AditivoService:
             return ADITIVOS_PADRAO.copy()
 
     @staticmethod
+    def salvar_banco(aditivos_db: Dict[str, dict]) -> None:
+        """Salva o dicionário completo de aditivos no arquivo JSON."""
+        try:
+            if not os.path.exists(DATA_DIR):
+                os.makedirs(DATA_DIR, exist_ok=True)
+            with open(DB_FILE, "w", encoding="utf-8") as f:
+                json.dump(aditivos_db, f, indent=4, ensure_ascii=False)
+            logger.info(f"Banco de aditivos salvo com sucesso em: {DB_FILE}")
+        except Exception as e:
+            logger.error(f"Erro ao salvar banco de aditivos: {e}")
+
+    @staticmethod
     def salvar_aditivo(nome: str, densidade: float, tipo: str, categoria: str = "Especial / Outro") -> Dict[str, dict]:
         """Adiciona um novo aditivo ao banco e salva persistentemente."""
         db = AditivoService.carregar_aditivos()
@@ -46,9 +59,34 @@ class AditivoService:
             "tipo": tipo,
             "categoria": categoria
         }
-
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(db, f, indent=4, ensure_ascii=False)
-
+        AditivoService.salvar_banco(db)
         logger.info(f"Novo aditivo adicionado com sucesso: '{nome}' (densidade={densidade}, tipo={tipo}, categoria={categoria})")
         return db
+
+    @staticmethod
+    def restaurar_padrao() -> Dict[str, dict]:
+        """Restaura o banco com os 26 aditivos canônicos do catálogo padrão."""
+        try:
+            if not os.path.exists(DATA_DIR):
+                os.makedirs(DATA_DIR, exist_ok=True)
+            with open(DB_FILE, "w", encoding="utf-8") as f:
+                json.dump(ADITIVOS_PADRAO, f, indent=4, ensure_ascii=False)
+            logger.info("Catálogo de aditivos padrão restaurado.")
+        except Exception as e:
+            logger.error(f"Erro ao restaurar catálogo padrão: {e}")
+        return ADITIVOS_PADRAO.copy()
+
+    @staticmethod
+    def obter_dataframe(aditivos_db: Dict[str, dict]) -> pd.DataFrame:
+        """Converte o dicionário de aditivos em um DataFrame formatado para visualização em tabela."""
+        dados = []
+        for nome, info in aditivos_db.items():
+            dados.append({
+                "Nome do Aditivo": nome,
+                "Categoria": info.get("categoria", "Geral"),
+                "Tipo": str(info.get("tipo", "solido")).capitalize(),
+                "SG": f"{info.get('densidade', 1.0):.2f}",
+                "Dosagem Usual": info.get("dosagem_tipica", "Conforme projeto"),
+                "Aplicação / Indicação": info.get("indicacao", "-")
+            })
+        return pd.DataFrame(dados)
