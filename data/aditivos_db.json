@@ -1,0 +1,194 @@
+{
+    "Bentonita (Gel)": {
+        "densidade": 2.65,
+        "tipo": "solido",
+        "categoria": "Extensor",
+        "dosagem_tipica": "1.0 a 4.0% BWOC",
+        "indicacao": "Redução de densidade da pasta (< 15.0 ppg) e controle de água livre"
+    },
+    "Barita": {
+        "densidade": 4.23,
+        "tipo": "solido",
+        "categoria": "Densificante",
+        "dosagem_tipica": "10.0 a 40.0% BWOC",
+        "indicacao": "Elevação de densidade (16.2 a 18.5 ppg) sob altas pressões de poro"
+    },
+    "Hematita": {
+        "densidade": 5.02,
+        "tipo": "solido",
+        "categoria": "Densificante",
+        "dosagem_tipica": "10.0 a 50.0% BWOC",
+        "indicacao": "Densificação severa (> 17.5 ppg) com menor demanda volumétrica"
+    },
+    "Cloreto de Cálcio (Salmoura)": {
+        "densidade": 1.0329,
+        "tipo": "salmoura",
+        "categoria": "Acelerador",
+        "bhct_max_c": 25.0,
+        "dosagem_tipica": "1.0 a 2.0% BWOC",
+        "indicacao": "Aceleração de hidratação e pega em seções frias/rasas (BHCT < 25 °C)"
+    },
+    "Cloreto de Cálcio (Flocos)": {
+        "densidade": 1.96,
+        "tipo": "solido",
+        "categoria": "Acelerador",
+        "bhct_max_c": 25.0,
+        "dosagem_tipica": "1.0 a 2.0% BWOC",
+        "indicacao": "Aceleração sólida de resistência inicial em seções frias/rasas (BHCT < 25 °C)"
+    },
+    "Cloreto de Sódio (Salmoura)": {
+        "densidade": 1.0279,
+        "tipo": "salmoura",
+        "categoria": "Acelerador",
+        "dosagem_tipica": "2.0 a 4.0% BWOC",
+        "indicacao": "Aceleração de pega em baixa concentração e proteção de folhelhos"
+    },
+    "Cloreto de Sódio (Seco)": {
+        "densidade": 2.17,
+        "tipo": "solido",
+        "categoria": "Acelerador",
+        "dosagem_tipica": "2.0 a 4.0% BWOC",
+        "indicacao": "Aditivo sólido para aceleração e controle de solubilidade salina"
+    },
+    "Gilsonita": {
+        "densidade": 1.07,
+        "tipo": "solido",
+        "categoria": "Extensor",
+        "dosagem_tipica": "3.0 a 10.0% BWOC",
+        "indicacao": "Extensor leve e agente selante mecânico para redução de densidade"
+    },
+    "Perlita Regular": {
+        "densidade": 2.20,
+        "tipo": "solido",
+        "categoria": "Extensor",
+        "dosagem_tipica": "2.0 a 6.0% BWOC",
+        "indicacao": "Extensor inorgânico para pastas de baixa densidade"
+    },
+    "Diatomita (Diacel D)": {
+        "densidade": 2.10,
+        "tipo": "solido",
+        "categoria": "Extensor",
+        "dosagem_tipica": "10.0 a 30.0% BWOC",
+        "indicacao": "Extensor de alta absorção de água para pastas ultra-leves"
+    },
+    "Pozolana Pozmix A": {
+        "densidade": 2.46,
+        "tipo": "solido",
+        "categoria": "Extensor",
+        "dosagem_tipica": "20.0 a 40.0% BWOC",
+        "indicacao": "Extensor pozolânico para economia e resistência ao ataque por sulfatos"
+    },
+    "Pozolana Pozmix D": {
+        "densidade": 2.50,
+        "tipo": "solido",
+        "categoria": "Extensor",
+        "dosagem_tipica": "20.0 a 40.0% BWOC",
+        "indicacao": "Pozolana de alta pureza para pastas leves de preenchimento (Lead)"
+    },
+    "Flor de Sílica (SSA-1)": {
+        "densidade": 2.63,
+        "tipo": "solido",
+        "categoria": "Especial / Outro",
+        "bhst_min_c": 110.0,
+        "dosagem_tipica": "30.0 a 35.0% BWOC",
+        "indicacao": "Estabilizador mandatório contra regressão de resistência em BHST > 110 °C"
+    },
+    "Areia de Sílica (Ottawa)": {
+        "densidade": 2.63,
+        "tipo": "solido",
+        "categoria": "Especial / Outro",
+        "bhst_min_c": 110.0,
+        "dosagem_tipica": "30.0 a 40.0% BWOC",
+        "indicacao": "Sílica de granulometria maior para alta permeabilidade e suporte térmico"
+    },
+    "Cal Hidratada": {
+        "densidade": 2.20,
+        "tipo": "solido",
+        "categoria": "Acelerador",
+        "dosagem_tipica": "2.0 a 4.0% BWOC",
+        "indicacao": "Acelerador e fonte alcalina em sistemas pozolânicos"
+    },
+    "Gesso (Cal-Seal)": {
+        "densidade": 2.70,
+        "tipo": "solido",
+        "categoria": "Acelerador",
+        "dosagem_tipica": "5.0 a 15.0% BWOC",
+        "indicacao": "Pega rápida e tixotropia para controle de perda severa de circulação"
+    },
+    "Dispersante CFR-1": {
+        "densidade": 1.63,
+        "tipo": "solido",
+        "categoria": "Dispersante",
+        "dosagem_tipica": "0.20 a 0.50% BWOC",
+        "indicacao": "Redução de atrito e viscosidade plástica para facilitar o bombeio"
+    },
+    "Dispersante CFR-2": {
+        "densidade": 1.30,
+        "tipo": "solido",
+        "categoria": "Dispersante",
+        "dosagem_tipica": "0.20 a 0.50% BWOC",
+        "indicacao": "Dispersante de alta performance para reologia crítica e minimização de perda de carga"
+    },
+    "Retardador HR-4": {
+        "densidade": 1.56,
+        "tipo": "solido",
+        "categoria": "Retardador",
+        "bhct_min_c": 50.0,
+        "bhct_max_c": 75.0,
+        "dosagem_tipica": "0.15 a 0.40% BWOC",
+        "indicacao": "Lignossulfonato ideal para temperaturas amenas e moderadas (BHCT 50 a 75 °C)"
+    },
+    "Retardador HR-7": {
+        "densidade": 1.30,
+        "tipo": "solido",
+        "categoria": "Retardador",
+        "bhct_min_c": 65.0,
+        "bhct_max_c": 105.0,
+        "dosagem_tipica": "0.20 a 0.60% BWOC",
+        "indicacao": "Lignossulfonato modificado para poços de temperatura intermediária (BHCT 65 a 105 °C)"
+    },
+    "Retardador HR-12": {
+        "densidade": 1.22,
+        "tipo": "solido",
+        "categoria": "Retardador",
+        "bhct_min_c": 75.0,
+        "bhct_max_c": 140.0,
+        "dosagem_tipica": "0.30 a 0.90% BWOC",
+        "indicacao": "Retardador de alta performance para poços profundos e quentes (BHCT > 75 °C)"
+    },
+    "Controlador de Filtrado HALDAD-9": {
+        "densidade": 1.22,
+        "tipo": "solido",
+        "categoria": "Controlador de Filtrado",
+        "dosagem_tipica": "0.30 a 0.70% BWOC",
+        "indicacao": "Controle de perda de filtrado API (< 50 mL/30min) contra desidratação em arenitos"
+    },
+    "Controlador de Filtrado HALDAD-14": {
+        "densidade": 1.31,
+        "tipo": "solido",
+        "categoria": "Controlador de Filtrado",
+        "dosagem_tipica": "0.30 a 0.80% BWOC",
+        "indicacao": "Controle de filtrado térmico e proteção contra migração de gás sob pressão"
+    },
+    "Controlador de Filtrado Diacel LWL": {
+        "densidade": 1.36,
+        "tipo": "solido",
+        "categoria": "Controlador de Filtrado",
+        "dosagem_tipica": "0.20 a 0.50% BWOC",
+        "indicacao": "Controle de filtrado com leve ação retardadora integrada"
+    },
+    "Agente de Perda de Circulação (Tuf-Plug)": {
+        "densidade": 1.28,
+        "tipo": "solido",
+        "categoria": "Perda de Circulação (LCM)",
+        "dosagem_tipica": "1.0 a 4.0% BWOC",
+        "indicacao": "Selagem física granular para vedar fraturas e zonas de perda natural"
+    },
+    "Carvão Ativado": {
+        "densidade": 1.57,
+        "tipo": "solido",
+        "categoria": "Especial / Outro",
+        "dosagem_tipica": "0.5 a 2.0% BWOC",
+        "indicacao": "Adsorção de impurezas orgânicas e estabilização de fluidos especiais"
+    }
+}

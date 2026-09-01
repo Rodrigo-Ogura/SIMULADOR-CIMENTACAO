@@ -1,0 +1,33 @@
+# Arquivos de ambiente e segredos locais (NUNCA SUBIR PARA O GIT)
+.env
+.env.local
+.env.*
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Ambientes Virtuais
+venv/
+.venv/
+env/
+ENV/
+
+# Logs e Dados Temporários
+logs/*.log
+*.log
+scratch/
+.system_generated/
+
+# Configurações de IDE / Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Streamlit Local Secrets (na nuvem são configurados via painel web)
+.streamlit/secrets.toml
