@@ -2,6 +2,7 @@
 
 A resposta do modelo é cercada por regras determinísticas: ela só é aprovada
 quando passa pela validação de requisitos críticos aplicáveis ao poço.
+Fundamentado em API Spec 10A, API RP 10B, Bourgoyne et al. (Cap. 3) e Nelson & Guillot.
 """
 
 from __future__ import annotations
@@ -74,29 +75,35 @@ Você deve gerar uma formulação tecnicamente rigorosa e consistente. Siga estr
    - Se densidade < 15.0 ppg: Use 'Bentonita (Gel)' (1.5% a 3.0% BWOC).
    - Se densidade > 16.2 ppg: Use 'Barita' (15% a 35% BWOC).
    - Se reologia crítica ou alta perda de carga: Use 'Dispersante CFR-2' ou 'Dispersante CFR-1' (0.25% a 0.40% BWOC).
+6. LAMA DE PERFURAÇÃO & EFICIÊNCIA DE DESLOCAMENTO (Bourgoyne et al. Cap. 3 / Nelson & Guillot Cap. 10):
+   - A lama de perfuração deve manter overbalance sobre a pressão de poros (+0.30 a +0.80 ppg).
+   - Para evitar canalização e instabilidade de Rayleigh-Taylor, a densidade da pasta de cimento deve superar a densidade da lama (densidade_lama < densidade_lead <= densidade_tail).
+   - Indique sempre a `densidade_lama_recomendada_ppg` avaliando a janela geomecânica.
 
 --- CATÁLOGO FECHADO DE ADITIVOS HOMOLOGADOS ---
 {catalogo_formatado}
 
 --- EXEMPLOS CANÔNICOS DE REFERÊNCIA (FEW-SHOT) ---
-Exemplo 1 (Poço Frio / Superfície: BHCT 18°C, BHST 35°C, densidade 12.8 ppg):
+Exemplo 1 (Poço Frio / Superfície: BHCT 18°C, BHST 35°C, densidade 12.8 ppg, lama 9.2 ppg):
 {{
   "pasta_nome": "Lead Slurry (Superfície)",
   "classe_cimento": "G",
   "densidade_alvo_ppg": 12.8,
+  "densidade_lama_recomendada_ppg": 9.2,
   "agua_gal_sk": 7.5,
   "aditivos": [
     {{"nome": "Bentonita (Gel)", "concentracao_bwoc_pct": 3.0, "justificativa": "Extensor para atingir baixa densidade e estabilizar água livre em seção rasa."}},
     {{"nome": "Cloreto de Cálcio (Flocos)", "concentracao_bwoc_pct": 2.0, "justificativa": "Acelerador para ganho de resistência rápida em temperatura fria (BHCT 18°C)."}}
   ],
-  "parecer_tecnico": "Pasta leve com pega acelerada para ancoragem de sapata de superfície."
+  "parecer_tecnico": "Pasta leve com pega acelerada para ancoragem de sapata de superfície e deslocamento sobre lama de 9.2 ppg."
 }}
 
-Exemplo 2 (Poço Profundo HPHT: BHCT 85°C, BHST 125°C, densidade 16.5 ppg, reologia crítica):
+Exemplo 2 (Poço Profundo HPHT: BHCT 85°C, BHST 125°C, densidade 16.5 ppg, lama 10.8 ppg, reologia crítica):
 {{
   "pasta_nome": "Tail Slurry (Sapata)",
   "classe_cimento": "G",
   "densidade_alvo_ppg": 16.5,
+  "densidade_lama_recomendada_ppg": 10.8,
   "agua_gal_sk": 5.0,
   "aditivos": [
     {{"nome": "Flor de Sílica (SSA-1)", "concentracao_bwoc_pct": 35.0, "justificativa": "35% BWOC para prevenção mandatória de regressão de resistência sob BHST 125°C."}},
@@ -104,7 +111,7 @@ Exemplo 2 (Poço Profundo HPHT: BHCT 85°C, BHST 125°C, densidade 16.5 ppg, reo
     {{"nome": "Dispersante CFR-2", "concentracao_bwoc_pct": 0.35, "justificativa": "Otimiza a reologia e minimiza perdas de carga anulares durante o bombeio."}},
     {{"nome": "Barita", "concentracao_bwoc_pct": 20.0, "justificativa": "Densificante para atingir a densidade alvo de 16.5 ppg."}}
   ],
-  "parecer_tecnico": "Pasta densificada e termoestável para isolamento de zona HPHT."
+  "parecer_tecnico": "Pasta densificada e termoestável para isolamento de zona HPHT com overbalance garantido."
 }}
 
 FORMATO OBRIGATÓRIO: responda SOMENTE um JSON válido, sem texto fora do objeto.
@@ -118,6 +125,7 @@ def _construir_prompt_usuario(dados_poco: Dict[str, Any], tipo_pasta: str, requi
 - Profundidade medida: {dados_poco.get('prof_topo', 0):.1f} m até {dados_poco.get('prof_base', 2000):.1f} m
 - Gradiente de poro: {dados_poco.get('grad_poro', 9.2):.2f} ppg
 - Gradiente de fratura: {dados_poco.get('grad_fratura', 16.8):.2f} ppg
+- Densidade da lama no poço: {dados_poco.get('dens_lama', 9.5):.2f} ppg
 - Janela de densidade-alvo: {dados_poco.get('densidade_min_alvo', 15.0):.2f} a {dados_poco.get('densidade_max_alvo', 16.0):.2f} ppg
 - BHST: {dados_poco.get('bhst_c', 80.0):.1f} °C
 - BHCT: {dados_poco.get('bhct_c', 60.0):.1f} °C
@@ -179,13 +187,6 @@ def recomendar_formulacao(
     if erros_entrada:
         return False, None, "Dados do poço inválidos: " + " | ".join(erros_entrada)
 
-    online, modelos, mensagem_status = verificar_status_ollama(base_url)
-    if not online:
-        return False, None, mensagem_status
-    if modelo not in modelos and modelos:
-        logger.warning("Modelo %s não localizado. Usando %s.", modelo, modelos[0])
-        modelo = modelos[0]
-
     requisitos = derivar_requisitos(dados_poco)
     mensagens: List[Dict[str, str]] = [
         {"role": "system", "content": _construir_prompt_sistema(catalogo_aditivos)},
@@ -193,10 +194,11 @@ def recomendar_formulacao(
     ]
 
     for tentativa in (1, 2):
-        logger.info("Gerando formulação via Ollama (%s), tentativa %s.", modelo, tentativa)
+        logger.info("Tentativa %s de recomendação via Ollama (%s)", tentativa, modelo)
         sucesso_chamada, conteudo, mensagem = _chamar_ollama(base_url, modelo, mensagens)
         if not sucesso_chamada:
             return False, None, mensagem
+
         recomendacao, erro_parse = _interpretar_resposta(conteudo, catalogo_aditivos)
         if recomendacao is None:
             return False, None, erro_parse
@@ -205,20 +207,17 @@ def recomendar_formulacao(
         recomendacao["validacao_aderencia"] = validacao
         recomendacao["tentativas_ia"] = tentativa
         recomendacao["correcao_aplicada"] = tentativa > 1
+        recomendacao["provedor"] = f"Ollama Local ({modelo})"
 
         if validacao["conforme"]:
-            logger.info("Formulação aprovada: %s/%s requisitos críticos.", validacao["requisitos_atendidos"], validacao["requisitos_total"])
-            return True, recomendacao, "Recomendação aprovada após validação de requisitos críticos."
+            logger.info("Formulação aprovada via Ollama: %s/%s requisitos.", validacao["requisitos_atendidos"], validacao["requisitos_total"])
+            return True, recomendacao, "Recomendação aprovada após validação de requisitos críticos (Ollama Local)."
 
         if tentativa == 1:
+            logger.info("Solicitando autocorreção ao Ollama por pendências em requisitos...")
             mensagens.extend([
                 {"role": "assistant", "content": conteudo},
                 {"role": "user", "content": construir_pedido_correcao(validacao)},
             ])
-            continue
 
-        logger.warning("Formulação bloqueada: %s pendências críticas após correção.", len(validacao["pendencias"]))
-        recomendacao["bloqueada"] = True
-        return False, recomendacao, "Formulação bloqueada: requisitos críticos não atendidos após uma tentativa de correção. Revise os itens pendentes antes de aplicar na calculadora."
-
-    return False, None, "Fluxo de recomendação encerrado sem resultado."
+    return False, recomendacao, "A formulação gerada pelo Ollama não atendeu a todos os requisitos críticos após 2 tentativas."

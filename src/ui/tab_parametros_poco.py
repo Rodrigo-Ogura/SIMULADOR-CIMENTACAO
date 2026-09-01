@@ -81,76 +81,95 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
             </div>
             """, unsafe_allow_html=True)
 
-        # 2. Resumo da Janela Geomecânica (Vinculada com a Aba 3 - Módulo Especialista)
+        # 2. Resumo da Janela Geomecânica (Sincronizada diretamente com a Aba 3 - Módulo Especialista)
         with st.container(border=True):
-            st.markdown("##### 🛡️ Janela Geomecânica (Integrada com a Aba 3)")
-            st.caption("Os limites de pressão são configurados no **Módulo Especialista (Aba 3)** e alimentam a janela operacional:")
+            st.markdown("##### 🛡️ Janela Geomecânica & Fluido no Poço")
+            st.caption("Os limites geomecânicos e o fluido de perfuração estão integrados em tempo real com o **Módulo Especialista (Aba 3)**:")
 
-            poro_atual = st.session_state.get("ia_poro", 10.20)
-            frac_atual = st.session_state.get("ia_frac", 16.80)
+            if "ia_dens_lama" not in st.session_state:
+                st.session_state["ia_dens_lama"] = 9.50
+
+            poro_atual = float(st.session_state.get("ia_poro", 10.20))
+            frac_atual = float(st.session_state.get("ia_frac", 16.80))
+            
             dens_lama = st.number_input(
                 "Densidade da Lama de Perfuração no Poço (ppg):",
-                value=9.50,
-                format="%.2f",
+                min_value=8.0,
+                max_value=20.0,
                 step=0.10,
-                key="param_dens_lama",
-                help="Densidade do fluido de perfuração atualmente no poço antes do bombeio da cimentação."
+                key="ia_dens_lama",
+                help="Densidade do fluido de perfuração atualmente no poço antes do bombeio da cimentação. Sincronizado com a Aba 3."
             )
 
             corredor_fundo = frac_atual - poro_atual
+            overbalance_lama = dens_lama - poro_atual
+            margem_fratura_lama = frac_atual - dens_lama
+
             st.markdown(f"""
-            <div style="background-color: #0f172a; border: 1px solid #1e293b; border-left: 4px solid #10b981; border-radius: 6px; padding: 12px 14px; margin-top: 8px;">
-                <div style="color: #94a3b8; font-size: 0.78rem; font-weight: 600; text-transform: uppercase;">Limites Atuais da Formação (Fundo do Poço):</div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-family: 'JetBrains Mono'; margin-top: 6px; font-size: 0.88rem;">
-                    <span style="color: #f59e0b;">Poro: <b>{poro_atual:.2f} ppg</b></span>
-                    <span style="color: #10b981; font-weight: 700;">Corredor Seguro: ↔ {corredor_fundo:.2f} ppg</span>
-                    <span style="color: #ef4444;">Fratura: <b>{frac_atual:.2f} ppg</b></span>
+            <div style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="color: #f59e0b;">Grad. Poro (Base): <b>{poro_atual:.2f} ppg</b></span>
+                    <span style="color: #ef4444;">Grad. Fratura (Base): <b>{frac_atual:.2f} ppg</b></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #cbd5e1;">
+                    <span>Lama no Poço: <b>{dens_lama:.2f} ppg</b></span>
+                    <span style="color: {'#10b981' if overbalance_lama >= 0.3 else '#ef4444'};">Overbalance: <b>{'+' if overbalance_lama>=0 else ''}{overbalance_lama:.2f} ppg</b></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 0.75rem;">
+                    <span>Corredor Geomecânico: <b>{corredor_fundo:.2f} ppg</b></span>
+                    <span>Margem Frat. Lama: <b>+{margem_fratura_lama:.2f} ppg</b></span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
     with col_banco:
+        # 3. Gestão e Auditoria do Catálogo de Aditivos
         with st.container(border=True):
-            st.markdown("##### 🧪 Catálogo de Aditivos Químicos")
-            st.caption("Base persistente de aditivos homologados (`data/aditivos_db.json`):")
+            st.markdown("##### 🧪 Catálogo de Aditivos Homologados")
+            st.caption("Base de dados com gravidades específicas ($SG$), tipos e categorias funcionais (Bourgoyne et al., Cap. 3):")
 
-            c_ad1, c_ad2 = st.columns(2)
-            with c_ad1:
-                novo_nome = st.text_input("Nome do Aditivo:", key="novo_adit_nome", placeholder="Ex: Antiespumante AF-1")
-                nova_categoria = st.selectbox("Categoria Funcional:", CATEGORIAS_ADITIVOS, key="novo_adit_cat")
-            with c_ad2:
-                nova_densidade = st.number_input("Gravidade Específica (SG):", value=1.00, format="%.2f", step=0.05, key="novo_adit_dens")
-                novo_tipo = st.selectbox("Estado / Tipo:", ["solido", "salmoura"], key="novo_adit_tipo")
+            df_aditivos = AditivoService.obter_dataframe(aditivos_db)
+            st.dataframe(
+                df_aditivos,
+                hide_index=True,
+                width="stretch",
+                height=265
+            )
 
-            col_btn_cad, col_btn_rst = st.columns([1.5, 1])
-            with col_btn_cad:
-                if st.button("💾 Cadastrar Aditivo", type="primary", use_container_width=True, key="btn_salvar_adit"):
-                    if novo_nome.strip():
-                        st.session_state.aditivos_db = AditivoService.salvar_aditivo(
-                            novo_nome.strip(), nova_densidade, novo_tipo, nova_categoria
-                        )
-                        st.success(f"Aditivo '{novo_nome}' homologado com sucesso!")
+            with st.expander("➕ Homologar Novo Aditivo no Catálogo"):
+                with st.form("form_novo_aditivo"):
+                    c_n1, c_n2 = st.columns(2)
+                    with c_n1:
+                        nome_novo = st.text_input("Nome Comercial do Aditivo:")
+                        dens_nova = st.number_input("Gravidade Específica (SG):", min_value=0.5, max_value=6.0, value=2.5, step=0.01)
+                    with c_n2:
+                        tipo_novo = st.selectbox("Tipo Físico:", ["solido", "liquido", "salmoura"])
+                        cat_nova = st.selectbox("Categoria Funcional:", CATEGORIAS_ADITIVOS)
+                    
+                    dosagem_nova = st.text_input("Dosagem Típica:", placeholder="Ex: 0.2 a 0.5% BWOC")
+                    indicacao_nova = st.text_input("Indicação Operacional:", placeholder="Ex: Controle de reologia e perda de carga")
+                    
+                    submitted = st.form_submit_button("Cadastrar Aditivo", type="primary")
+                    if submitted and nome_novo:
+                        aditivos_db[nome_novo] = {
+                            'densidade': dens_nova,
+                            'tipo': tipo_novo,
+                            'categoria': cat_nova,
+                            'dosagem_tipica': dosagem_nova,
+                            'indicacao': indicacao_nova
+                        }
+                        AditivoService.salvar_banco(aditivos_db)
+                        st.success(f"Aditivo '{nome_novo}' cadastrado com sucesso!")
                         st.rerun()
-                    else:
-                        st.warning("Informe o nome comercial para cadastrar.")
-            
-            with col_btn_rst:
-                if st.button("🔄 Resetar Banco", use_container_width=True, help="Restaura o catálogo oficial de 26 aditivos do Bourgoyne et al."):
-                    st.session_state.aditivos_db = AditivoService.inicializar_banco()
-                    st.info("Catálogo padrão restaurado!")
+
+            col_rst, _ = st.columns([1.5, 1])
+            with col_rst:
+                if st.button("🔄 Restaurar Catálogo Padrão", help="Restaura os 26 aditivos canônicos do Bourgoyne et al."):
+                    aditivos_db = AditivoService.restaurar_padrao()
+                    st.success("Catálogo padrão restaurado com sucesso!")
                     st.rerun()
 
-        # Tabela expansível com visualização rápida
-        with st.expander(f"📚 Ver Catálogo Homologado ({len(aditivos_db)} aditivos)", expanded=False):
-            dados_cat = [{
-                'Aditivo': k,
-                'Categoria': v.get('categoria', 'Geral'),
-                'Gravidade Específica (SG)': f"{v.get('densidade', 1.0):.2f}",
-                'Tipo': v.get('tipo', 'solido')
-            } for k, v in sorted(aditivos_db.items())]
-            st.dataframe(pd.DataFrame(dados_cat), hide_index=True, width="stretch")
-
-    params_poco = {
+    parametros = {
         'd_broca': d_broca,
         'd_ext': d_ext,
         'd_int': d_int,
@@ -159,4 +178,4 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
         'dens_lama': dens_lama
     }
 
-    return params_poco, st.session_state.aditivos_db
+    return parametros, aditivos_db

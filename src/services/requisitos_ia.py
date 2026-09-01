@@ -4,6 +4,7 @@ O módulo separa requisitos obrigatórios de engenharia da geração textual do
 modelo. A IA pode justificar e escolher alternativas do catálogo, mas uma
 formulação só é aprovada quando todos os requisitos críticos aplicáveis forem
 observados na resposta estruturada.
+Fundamentado em API Spec 10A, API RP 10B, Bourgoyne et al. (Cap. 3) e Nelson & Guillot.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ def validar_dados_poco(dados_poco: Dict[str, Any]) -> List[str]:
     dens_max = _numero(dados_poco.get("densidade_max_alvo"))
     grad_poro = _numero(dados_poco.get("grad_poro"))
     grad_fratura = _numero(dados_poco.get("grad_fratura"))
+    dens_lama = _numero(dados_poco.get("dens_lama"))
 
     if base <= topo:
         erros.append("A profundidade de base deve ser maior que a profundidade de topo.")
@@ -36,6 +38,10 @@ def validar_dados_poco(dados_poco: Dict[str, Any]) -> List[str]:
         erros.append("O gradiente de poro deve ser inferior ao gradiente de fratura.")
     if grad_fratura > 0 and dens_max > grad_fratura - 0.5:
         erros.append("A densidade máxima deve permanecer ao menos 0,5 ppg abaixo do gradiente de fratura.")
+    if dens_lama > 0 and grad_poro > 0 and dens_lama < grad_poro:
+        erros.append(f"A densidade da lama ({dens_lama:.2f} ppg) deve ser superior à pressão de poros ({grad_poro:.2f} ppg) para manter o overbalance de segurança.")
+    if dens_lama > 0 and grad_fratura > 0 and dens_lama >= grad_fratura:
+        erros.append(f"A densidade da lama ({dens_lama:.2f} ppg) não pode exceder o gradiente de fratura ({grad_fratura:.2f} ppg).")
     return erros
 
 
@@ -51,6 +57,7 @@ def derivar_requisitos(dados_poco: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Converte condições de poço em requisitos críticos verificáveis."""
     dens_min = _numero(dados_poco.get("densidade_min_alvo"))
     dens_max = _numero(dados_poco.get("densidade_max_alvo"))
+    dens_lama = _numero(dados_poco.get("dens_lama"))
     bhct = _numero(dados_poco.get("bhct_c"))
     bhst = _numero(dados_poco.get("bhst_c"))
 
@@ -63,6 +70,15 @@ def derivar_requisitos(dados_poco: Dict[str, Any]) -> List[Dict[str, Any]]:
             "maximo": dens_max,
         }
     ]
+
+    # Regra de deslocamento hidrostático (Nelson & Guillot Cap. 10 / Bourgoyne Cap. 3)
+    if dens_lama > 0 and dens_min <= dens_lama:
+        requisitos.append({
+            "id": "contraste_densidade_lama",
+            "descricao": f"Densidade da pasta ({dens_min:.2f} ppg) deve ser superior à lama ({dens_lama:.2f} ppg) para eficiência de deslocamento por empuxo",
+            "tipo": "densidade_superior_lama",
+            "dens_lama": dens_lama
+        })
 
     if dens_max < 15.0:
         requisitos.append({"id": "extensor_densidade_baixa", "descricao": "Extensor para densidade-alvo abaixo de 15,0 ppg", "tipo": "categoria", "categoria": "Extensor"})
@@ -118,9 +134,8 @@ def normalizar_recomendacao(resposta: Dict[str, Any], catalogo_aditivos: Dict[st
         aditivos_normalizados.append(
             {
                 "nome": nome_catalogo,
-                "concentracao_bwoc_pct": concentracao,
                 "concentracao": concentracao,
-                "justificativa": str(aditivo.get("justificativa", "Aditivo recomendado para as condições do poço.")).strip(),
+                "justificativa": str(aditivo.get("justificativa", "")).strip(),
             }
         )
 
@@ -128,6 +143,7 @@ def normalizar_recomendacao(resposta: Dict[str, Any], catalogo_aditivos: Dict[st
     saida["classe_cimento"] = str(resposta.get("classe_cimento", "")).strip().upper()
     saida["densidade_alvo_ppg"] = _numero(resposta.get("densidade_alvo_ppg"))
     saida["agua_gal_sk"] = _numero(resposta.get("agua_gal_sk"))
+    saida["densidade_lama_recomendada_ppg"] = _numero(resposta.get("densidade_lama_recomendada_ppg", resposta.get("dens_lama_ppg")))
     saida["aditivos"] = aditivos_normalizados
     saida["aditivos_rejeitados"] = rejeitados
     return saida
@@ -147,6 +163,10 @@ def validar_recomendacao(resposta: Dict[str, Any], requisitos: List[Dict[str, An
             valor = _numero(resposta.get("densidade_alvo_ppg"), -1)
             atendido = requisito["minimo"] <= valor <= requisito["maximo"]
             observado = f"{valor:.2f} ppg" if valor >= 0 else "Densidade inválida"
+        elif tipo == "densidade_superior_lama":
+            valor = _numero(resposta.get("densidade_alvo_ppg"), -1)
+            atendido = valor > requisito["dens_lama"]
+            observado = f"{valor:.2f} ppg (Lama: {requisito['dens_lama']:.2f} ppg)" if valor >= 0 else "Densidade inválida"
         elif tipo in {"categoria", "categoria_dosagem"}:
             candidatos = [ad for ad in aditivos if catalogo_aditivos.get(ad.get("nome"), {}).get("categoria") == requisito["categoria"]]
             if tipo == "categoria_dosagem":

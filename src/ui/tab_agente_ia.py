@@ -2,7 +2,8 @@
 Módulo Especialista de Formulação de Pastas & Assistência de Engenharia.
 Interface de Alta Fidelidade — Estilo OpenLab Drilling (NORCE).
 Suporta Recomendação de Programa Completo (Lead + Tail) e Pastas Individuais
-com Groq Cloud LPU API e Ollama Local sob Guardrails Determinísticos.
+com Groq Cloud LPU API e Ollama Local sob Guardrails Determinísticos e Físico-Químicos
+de Deslocamento de Lama (API Spec 10A/10B, Bourgoyne et al. Cap. 3, Nelson & Guillot).
 """
 
 import streamlit as st
@@ -25,7 +26,8 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
     st.markdown("### 🧠 Módulo Especialista de Formulação & Otimização de Pastas")
     st.caption(
         "Sistema especialista de apoio à decisão operacional baseado em Large Language Models e **Guardrails Determinísticos de Engenharia**, "
-        "dimensionando programas completos de cimentação (**Lead Slurry + Tail Slurry**) sob restrições geomecânicas e térmicas (API Spec 10A/10B)."
+        "dimensionando programas completos de cimentação (**Lead Slurry + Tail Slurry**), avaliando a **Lama de Perfuração** e eficiência de deslocamento "
+        "sob restrições geomecânicas e térmicas (API Spec 10A/10B, Bourgoyne et al., Nelson & Guillot)."
     )
 
     # 1. Painel de Conectividade do Motor de Inferência (LPU / Local)
@@ -125,7 +127,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
 
     # 2. Condições de Contorno e Geomecânica do Poço
     st.markdown("---")
-    st.markdown("##### 📋 Condições de Contorno Operacionais & Perfil Térmico")
+    st.markdown("##### 📋 Condições de Contorno Operacionais, Geomecânica & Perfil Térmico")
 
     def _atualizar_preset_callback():
         preset_sel = st.session_state.get("preset_cenario_poco", "")
@@ -134,6 +136,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             st.session_state["ia_base"] = 3200.0
             st.session_state["ia_poro"] = 10.2
             st.session_state["ia_frac"] = 16.8
+            st.session_state["ia_dens_lama"] = 10.60
             st.session_state["ia_dmin"] = 15.6
             st.session_state["ia_dmax"] = 16.2
             st.session_state["ia_bhst"] = 115.0
@@ -148,6 +151,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             st.session_state["ia_base"] = 2400.0
             st.session_state["ia_poro"] = 11.5
             st.session_state["ia_frac"] = 14.5
+            st.session_state["ia_dens_lama"] = 11.90
             st.session_state["ia_dmin"] = 13.0
             st.session_state["ia_dmax"] = 13.8
             st.session_state["ia_bhst"] = 70.0
@@ -162,6 +166,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             st.session_state["ia_base"] = 900.0
             st.session_state["ia_poro"] = 8.6
             st.session_state["ia_frac"] = 13.5
+            st.session_state["ia_dens_lama"] = 9.00
             st.session_state["ia_dmin"] = 12.0
             st.session_state["ia_dmax"] = 13.0
             st.session_state["ia_bhst"] = 30.0
@@ -208,8 +213,14 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             tempo_bombeio = st.number_input("Tempo de Bombeio Previsto (min):", step=15, key="ia_tbomb")
 
         with c_d2:
-            grad_poro = st.number_input("Gradiente de Poro (ppg):", step=0.1, key="ia_poro")
-            grad_frac = st.number_input("Gradiente de Fratura (ppg):", step=0.1, key="ia_frac")
+            c_p1, c_p2 = st.columns(2)
+            with c_p1:
+                grad_poro = st.number_input("Grad. Poro (ppg):", step=0.1, key="ia_poro")
+            with c_p2:
+                grad_frac = st.number_input("Grad. Fratura (ppg):", step=0.1, key="ia_frac")
+            
+            dens_lama = st.number_input("Densidade da Lama de Perfuração (ppg):", step=0.1, key="ia_dens_lama", help="Fluido atualmente no poço. Deve garantir overbalance sobre o poro e ser deslocado pelo cimento.")
+
             c_dmin, c_dmax = st.columns(2)
             with c_dmin:
                 dens_min = st.number_input("Dens. Mín Tail (ppg):", step=0.1, key="ia_dmin")
@@ -273,6 +284,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     'prof_base': prof_base,
                     'grad_poro': grad_poro,
                     'grad_fratura': grad_frac,
+                    'dens_lama': dens_lama,
                     'densidade_min_alvo': dens_min,
                     'densidade_max_alvo': dens_max,
                     'bhst_c': bhst,
@@ -282,7 +294,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     'presenca_gas': chk_gas,
                     'perda_circulacao': chk_lcm,
                     'reologia_critica': chk_reologia,
-                    'observacoes': f"Pasta de Sapata/Fundo: {obs_texto}"
+                    'observacoes': f"Pasta de Sapata/Fundo (Tail). Lama no poço: {dens_lama:.2f} ppg. {obs_texto}"
                 }
                 suc_tail, res_tail, msg_tail = _executar_ia(dados_tail, "Tail Slurry (Sapata / Fundo)")
 
@@ -297,6 +309,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     'prof_base': prof_topo + (prof_base - prof_topo) * 0.7 if prof_base > prof_topo else prof_topo + 500.0,
                     'grad_poro': lead_grad_poro,
                     'grad_fratura': lead_grad_frac,
+                    'dens_lama': min(dens_lama, lead_dmin - 0.5),
                     'densidade_min_alvo': lead_dmin,
                     'densidade_max_alvo': lead_dmax,
                     'bhst_c': max(35.0, bhst * 0.70),
@@ -306,7 +319,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     'presenca_gas': False,
                     'perda_circulacao': chk_lcm,
                     'reologia_critica': chk_reologia,
-                    'observacoes': f"Pasta Leve de Preenchimento: proteger topo contra fratura. {obs_texto}"
+                    'observacoes': f"Pasta Leve de Preenchimento (Lead): proteger topo contra fratura. {obs_texto}"
                 }
                 suc_lead, res_lead, msg_lead = _executar_ia(dados_lead, "Lead Slurry (Preenchimento / Topo)")
 
@@ -331,6 +344,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     'prof_base': prof_base,
                     'grad_poro': grad_poro,
                     'grad_fratura': grad_frac,
+                    'dens_lama': dens_lama,
                     'densidade_min_alvo': dens_min,
                     'densidade_max_alvo': dens_max,
                     'bhst_c': bhst,
@@ -392,8 +406,12 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         with col_c_lead:
             with st.container(border=True):
                 st.markdown("##### 📘 Pasta 2: Lead Slurry (Preenchimento / Topo)")
-                st.markdown(f"**Densidade:** `{res_lead.get('densidade_alvo_ppg', 12.8):.2f} ppg` │ **Classe:** `{res_lead.get('classe_cimento', 'G')}` │ **Água:** `{res_lead.get('agua_gal_sk', 7.5):.2f} gal/sk`")
-                st.markdown(f"> *{res_lead.get('parecer_tecnico', '')}*")
+                c_m1, c_m2, c_m3 = st.columns(3)
+                c_m1.metric("Densidade", f"{res_lead.get('densidade_alvo_ppg', 12.8):.2f} ppg")
+                c_m2.metric("Classe API", f"Classe {res_lead.get('classe_cimento', 'G')}")
+                c_m3.metric("Água Mistura", f"{res_lead.get('agua_gal_sk', 7.5):.2f} gal/sk")
+                
+                st.markdown(f"**Parecer do Especialista:**\n> *{res_lead.get('parecer_tecnico', '')}*")
                 
                 st.markdown("**Aditivos Selecionados:**")
                 for ad in res_lead.get("aditivos", []):
@@ -403,12 +421,26 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         with col_c_tail:
             with st.container(border=True):
                 st.markdown("##### 📙 Pasta 1: Tail Slurry (Sapata / Fundo)")
-                st.markdown(f"**Densidade:** `{res_tail.get('densidade_alvo_ppg', 16.0):.2f} ppg` │ **Classe:** `{res_tail.get('classe_cimento', 'G')}` │ **Água:** `{res_tail.get('agua_gal_sk', 5.0):.2f} gal/sk`")
-                st.markdown(f"> *{res_tail.get('parecer_tecnico', '')}*")
+                c_t1, c_t2, c_t3 = st.columns(3)
+                c_t1.metric("Densidade", f"{res_tail.get('densidade_alvo_ppg', 16.0):.2f} ppg")
+                c_t2.metric("Classe API", f"Classe {res_tail.get('classe_cimento', 'G')}")
+                c_t3.metric("Água Mistura", f"{res_tail.get('agua_gal_sk', 5.0):.2f} gal/sk")
+                
+                st.markdown(f"**Parecer do Especialista:**\n> *{res_tail.get('parecer_tecnico', '')}*")
                 
                 st.markdown("**Aditivos Selecionados:**")
                 for ad in res_tail.get("aditivos", []):
                     st.markdown(f"- **{ad.get('nome')}**: `{ad.get('concentracao', 0.0):.2f}% BWOC` — *{ad.get('justificativa', '')}*")
+
+        # Telemetria do Trem de Deslocamento de Fluidos
+        st.markdown(f"""
+        <div style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+            <span style="color: #94a3b8; font-weight: 600; text-transform: uppercase;">Trem de Fluidos & Contraste de Deslocamento:</span>
+            <span style="color: #cbd5e1; margin-left: 10px;">Lama: <b>{dens_lama:.2f} ppg</b></span> ➔ 
+            <span style="color: #38bdf8;">Lead Slurry: <b>{res_lead.get('densidade_alvo_ppg', 12.8):.2f} ppg</b> (+{res_lead.get('densidade_alvo_ppg', 12.8) - dens_lama:.2f} ppg)</span> ➔ 
+            <span style="color: #f59e0b;">Tail Slurry: <b>{res_tail.get('densidade_alvo_ppg', 16.0):.2f} ppg</b> (+{res_tail.get('densidade_alvo_ppg', 16.0) - res_lead.get('densidade_alvo_ppg', 12.8):.2f} ppg)</span>
+        </div>
+        """, unsafe_allow_html=True)
 
         st.markdown("---")
         if "msg_sucesso_prog" in st.session_state:
@@ -446,7 +478,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             with c_res3:
                 st.metric("Água de Mistura", f"{rec.get('agua_gal_sk', 5.0):.2f} gal/sk")
             with c_res4:
-                st.metric("Provedor", str(rec.get('provedor', 'IA Engine')).split(" ")[0])
+                st.metric("Lama no Poço", f"{dens_lama:.2f} ppg", f"Overbalance: +{dens_lama - grad_poro:.2f} ppg")
 
             st.markdown(f"**Parecer do Especialista:**\n> *{rec.get('parecer_tecnico', 'Sem observações.')}*")
 
