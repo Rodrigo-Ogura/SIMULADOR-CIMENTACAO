@@ -1,10 +1,11 @@
 """
 Serviço de gerenciamento, persistência e formatação do catálogo de aditivos (JSON).
+Totalmente tolerante a falhas e compatível com Streamlit Cloud.
 """
 
 import json
 import os
-from typing import Dict
+from typing import Dict, Any
 import pandas as pd
 from config import DATA_DIR, DB_FILE, ADITIVOS_PADRAO
 from src.utils.logger import logger
@@ -16,24 +17,31 @@ class AditivoService:
     @staticmethod
     def inicializar_banco() -> Dict[str, dict]:
         """Garante que a pasta data/ e o arquivo aditivos_db.json existam."""
-        if not os.path.exists(DATA_DIR):
-            os.makedirs(DATA_DIR, exist_ok=True)
+        try:
+            if not os.path.exists(DATA_DIR):
+                os.makedirs(DATA_DIR, exist_ok=True)
 
-        if not os.path.exists(DB_FILE):
-            logger.info(f"Criando banco de aditivos padrão em: {DB_FILE}")
-            with open(DB_FILE, "w", encoding="utf-8") as f:
-                json.dump(ADITIVOS_PADRAO, f, indent=4, ensure_ascii=False)
+            if not os.path.exists(DB_FILE):
+                logger.info(f"Criando banco de aditivos padrão em: {DB_FILE}")
+                with open(DB_FILE, "w", encoding="utf-8") as f:
+                    json.dump(ADITIVOS_PADRAO, f, indent=4, ensure_ascii=False)
+                return ADITIVOS_PADRAO.copy()
+            
+            return AditivoService.carregar_aditivos()
+        except Exception as e:
+            logger.error(f"Erro ao inicializar banco: {e}")
             return ADITIVOS_PADRAO.copy()
-        
-        return AditivoService.carregar_aditivos()
 
     @staticmethod
     def carregar_aditivos() -> Dict[str, dict]:
         """Carrega todos os aditivos cadastrados."""
         try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                db = json.load(f)
-                return db
+            if os.path.exists(DB_FILE):
+                with open(DB_FILE, "r", encoding="utf-8") as f:
+                    db = json.load(f)
+                    if isinstance(db, dict) and db:
+                        return db
+            return ADITIVOS_PADRAO.copy()
         except Exception as e:
             logger.error(f"Erro ao carregar banco de aditivos: {e}")
             return ADITIVOS_PADRAO.copy()
@@ -77,16 +85,22 @@ class AditivoService:
         return ADITIVOS_PADRAO.copy()
 
     @staticmethod
-    def obter_dataframe(aditivos_db: Dict[str, dict]) -> pd.DataFrame:
+    def obter_dataframe(aditivos_db: Any = None) -> pd.DataFrame:
         """Converte o dicionário de aditivos em um DataFrame formatado para visualização em tabela."""
+        if not isinstance(aditivos_db, dict) or not aditivos_db:
+            aditivos_db = AditivoService.carregar_aditivos()
+
         dados = []
         for nome, info in aditivos_db.items():
-            dados.append({
-                "Nome do Aditivo": nome,
-                "Categoria": info.get("categoria", "Geral"),
-                "Tipo": str(info.get("tipo", "solido")).capitalize(),
-                "SG": f"{info.get('densidade', 1.0):.2f}",
-                "Dosagem Usual": info.get("dosagem_tipica", "Conforme projeto"),
-                "Aplicação / Indicação": info.get("indicacao", "-")
-            })
-        return pd.DataFrame(dados)
+            if isinstance(info, dict):
+                dados.append({
+                    "Nome do Aditivo": str(nome),
+                    "Categoria": str(info.get("categoria", "Geral")),
+                    "Tipo": str(info.get("tipo", "solido")).capitalize(),
+                    "SG": f"{float(info.get('densidade', 1.0)):.2f}",
+                    "Dosagem Usual": str(info.get("dosagem_tipica", "Conforme projeto")),
+                    "Aplicação / Indicação": str(info.get("indicacao", "-"))
+                })
+        
+        colunas = ["Nome do Aditivo", "Categoria", "Tipo", "SG", "Dosagem Usual", "Aplicação / Indicação"]
+        return pd.DataFrame(dados) if dados else pd.DataFrame(columns=colunas)
