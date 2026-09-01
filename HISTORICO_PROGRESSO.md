@@ -9,9 +9,9 @@ Documento de registro contínuo de evolução, alterações de código, testes e
 
 - **Linguagem & Frameworks:** Python 3.10+, Streamlit, Plotly, NumPy, Pandas, Pydantic, Groq Cloud API, Ollama Local.
 - **Design System:** Estilo industrial de alta fidelidade inspirado no **OpenLab Drilling (NORCE)** (Dark Slate Theme `#0b0f19`, Cartões Digitais SCADA de Telemetria via `st.html`, Esquemático 2D Didático, Janela de Pressão Geomecânica e Recomendador de Programa Completo Multi-Pasta).
-- **Segurança & Deploy em Nuvem:** Suporte a segredos criptografados via `st.secrets` para publicação segura no **Streamlit Community Cloud** e proteção estrita de credenciais com `.gitignore`.
+- **Repositório & Deploy:** GitHub oficial ([github.com/Rodrigo-Ogura/SIMULADOR-CIMENTACAO](https://github.com/Rodrigo-Ogura/SIMULADOR-CIMENTACAO)) integrado com deploy automático no **Streamlit Community Cloud** com proteção de chave de API (`st.secrets` e `.gitignore`).
 - **Estrutura de Pastas:**
-  - `app.py`: Ponto de entrada do simulador Streamlit integrando cabeçalho de telemetria, abas e tema OpenLab com escala tipográfica calibrada.
+  - `app.py`: Ponto de entrada do simulador Streamlit integrando cabeçalho de telemetria, abas e tema OpenLab.
   - `config.py`: Constantes físicas API, configurações de ambiente (`.env` local ou `st.secrets` na nuvem), catálogo padrão de aditivos e parâmetros de IA.
   - `data/`: Banco de dados persistente em JSON ([`aditivos_db.json`](./data/aditivos_db.json)).
   - `docs/`: Base pedagógica e normativa estruturada em 3 níveis (Fundamentos, Sistema/IA, Acadêmico/Normativo), guia de deploy e anexos em PDF.
@@ -38,33 +38,37 @@ Documento de registro contínuo de evolução, alterações de código, testes e
 ### [Sessão 6] - Governança Antigravity e Trilha Pedagógica em 3 Níveis
 - Criação do [`GEMINI.md`](./GEMINI.md) e reorganização total da pasta `docs/` em 3 níveis de profundidade (Fundamentos, Sistema/IA, Acadêmico/Normativo).
 
-### [Sessão 7] - Modernização Visual, Esquemático 2D Didático e Programa Completo de IA
-- **O que foi feito:**
-  - **Recomendação Autônoma de Programa Completo (Lead + Tail Slurry) na Aba 3 (`tab_agente_ia.py`):** Dimensionamento bi-pasta com aplicação mestre em 1 clique.
-  - **Auditoria Ponto a Ponto da Janela Operacional:** Varredura em toda a profundidade ($0 \le z \le z_{max}$), identificando exatamente intervalos de fratura e kick.
-  - **Esquemático 2D Didático:** Sapata enfatizada e cotas dimensionais completas no padrão do exercício.
-  - **Protocolo de Encerramento Automático (`logoff`):** Regra no `GEMINI.md` para fechamento e auditoria com um único comando.
-
-### [Sessão 8] - Preparação para Deploy Online & Proteção de Chaves de API (Data Atual)
-- **O que foi feito:**
-  - **Suporte Híbrido a Segredos em `config.py`:** Função `_obter_groq_api_key()` lê tanto de `.env` (local) quanto de `st.secrets` (Streamlit Cloud na nuvem).
-  - **Proteção Total contra Vazamentos ([`.gitignore`](./.gitignore)):** Bloqueio estrito de arquivos `.env`, `logs/`, caches e arquivos temporários.
-  - **Atualização do `requirements.txt`:** Inclusão explícita de `numpy` e dependências para deploy limpo em nuvem.
-  - **Criação do Guia de Deploy Online ([`docs/02_SISTEMA_E_IA/04_guia_deploy_online.md`](./docs/02_SISTEMA_E_IA/04_guia_deploy_online.md)):** Passo a passo para publicação no Streamlit Community Cloud com chave criptografada.
+### [Sessão 7 e 8] - Modernização Visual OpenLab, Deploy Online e Guardrails de Lama (Sessão Atual)
+- **Data/Hora de Encerramento:** 2026-09-01 16:00
+- **O que foi realizado:**
+  1. **Recomendação de Programa Completo Bi-Pasta (Lead + Tail Slurry):**
+     - IA projeta de forma autônoma a pasta leve de topo (12.0 a 13.8 ppg) com extensores e a pasta pesada de fundo (15.6 a 16.5 ppg) com retardadores/sílica.
+     - Botão mestre de aplicação em 1 clique para preencher a Pasta 1 e Pasta 2 na Aba 2.
+  2. **Integração Total da Densidade da Lama de Perfuração ($\rho_{lama}$):**
+     - Campo de densidade de lama adicionado à Aba 3 e sincronizado com a Aba 1 e Aba 4.
+     - Guardrails determinísticos baseados em Bourgoyne et al. (Cap. 3) e Nelson & Guillot (Cap. 10) validando overbalance e hierarquia de deslocamento hidrostático: $\rho_{lama} < \rho_{lead} \le \rho_{tail}$.
+  3. **Esquemático 2D Didático & Janela Operacional Dinâmica:**
+     - Seletor dual (*Didático* com cotas verticais/sapata enfatizada vs *Escala Real*).
+     - Auditoria ponto a ponto de toda a coluna com alerta de risco de fratura ou kick.
+  4. **Deploy Online Seguro no Streamlit Cloud & GitHub:**
+     - Criação de `.gitignore` para proteção absoluta de chaves locais (`.env`).
+     - Suporte em `config.py` a `st.secrets` criptografados.
+     - Configuração de autoria e envio oficial para [github.com/Rodrigo-Ogura/SIMULADOR-CIMENTACAO](https://github.com/Rodrigo-Ogura/SIMULADOR-CIMENTACAO).
+  5. **Documentação e Protocolo de Encerramento (`logoff`):**
+     - Atualização completa de `docs/` e `README.md`.
+     - Todos os módulos Python compilados com zero erros (`python -m py_compile`).
 
 ---
 
 ## 🎯 Estado Atual do Projeto
 
-- **Status Geral:** ✅ Simulador de cimentação 100% pronto para publicação na web (Streamlit Community Cloud), com suporte a chave Groq criptografada nos servidores da nuvem, sem risco de vazamento no código.
+- **Status Geral:** ✅ Simulador de cimentação completo, online no GitHub e Streamlit Cloud, testado, consistente e pronto para ser retomado a qualquer momento.
 
 ---
 
 ## 🚀 Próximos Passos Sugeridos / Backlog
 
-1. **Deploy no Streamlit Community Cloud:**
-   - Criar o repositório no GitHub e conectar ao Streamlit Cloud seguindo o guia.
-2. **Exportação de Relatórios de Engenharia (PDF/Excel):**
-   - Gerar memorial de cálculo para entrega operacional ou acadêmica.
-3. **Eficiência de Deslocamento e Centralização (Standoff):**
-   - Modelar o perfil de standoff da coluna no poço e a taxa de remoção do fluido de perfuração.
+1. **Exportação de Relatórios de Engenharia (PDF/Excel):**
+   - Gerar memorial de cálculo em PDF/Excel com o esquemático 2D, ficha de traço operacional e parecer da IA.
+2. **Eficiência de Deslocamento e Centralização (Standoff):**
+   - Modelar o perfil de centralização da coluna no poço e o cálculo analítico da taxa de remoção do fluido de perfuração.
