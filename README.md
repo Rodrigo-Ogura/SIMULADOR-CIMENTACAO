@@ -1,10 +1,26 @@
 # 🛢️ Simulador de Cimentação de Poços de Petróleo & Agente Especialista IA
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://simulador-cimentacao-usp.streamlit.app)
+[![API Spec 10A](https://img.shields.io/badge/Norma-API%20Spec%2010A%20%2F%20RP%2010B-blue)](https://www.api.org)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-brightgreen)](https://www.python.org)
+[![Groq Cloud LPU](https://img.shields.io/badge/IA%20Engine-Groq%20Cloud%20LPU-orange)](https://groq.com)
+
 Aplicação interativa de engenharia desenvolvida em Python e Streamlit para **dimensionamento volumétrico, estequiométrico e hidrostático de pastas de cimento**, combinada a um **Agente Inteligente de IA Híbrido (Groq Cloud API + Ollama Local)** com **Guardrails Determinísticos** para recomendação e formulação automática de aditivos conforme normas **API Spec 10A / API RP 10B-2** e literatura clássica (**Bourgoyne et al., Cap. 3** e **Nelson & Guillot**).
 
 ---
 
-## 📌 Visão Geral do Projeto
+## 🌐 Acesso Online Imediato (Web & Mobile)
+
+A ferramenta está hospedada e disponível publicamente na nuvem para estudantes, orientadores, pesquisadores e engenheiros de campo:
+
+### 🚀 [**CLIQUE AQUI PARA ACESSAR O SIMULADOR ONLINE**](https://simulador-cimentacao-usp.streamlit.app)
+🔗 **Link Oficial:** `https://simulador-cimentacao-usp.streamlit.app`
+
+> 💡 **Acesso instantâneo sem instalação:** Basta abrir o link no seu navegador (computador, tablet ou smartphone). Todas as funcionalidades (cálculo de balanço de massas, esquemático 2D didático, telemetria SCADA, janela geomecânica e Agente Especialista IA com Groq Cloud) rodam 100% na nuvem em tempo real!
+
+---
+
+## 📌 Visão Geral da Arquitetura do Projeto
 
 O projeto foi desenvolvido no âmbito de **Iniciação Científica (IC) em Engenharia de Petróleo (Escola Politécnica da USP / PRH-ANP)** com dois pilares complementares:
 
@@ -26,32 +42,9 @@ flowchart LR
 
 ---
 
-## 🌐 Como Acessar Online ou Fazer o Deploy na Nuvem (100% Gratuito)
+## 💻 Como Executar Localmente no seu Computador (Offline / Ollama)
 
-O simulador está preparado para rodar diretamente na nuvem via **Streamlit Community Cloud**, permitindo acesso imediato pelo navegador (PC, tablet ou celular) sem necessidade de instalar Python.
-
-### 🚀 Acesso Rápido:
-- **Repositório Oficial:** [github.com/Rodrigo-Ogura/SIMULADOR-CIMENTACAO](https://github.com/Rodrigo-Ogura/SIMULADOR-CIMENTACAO)
-
-### ☁️ Como Publicar a sua Própria Versão no Streamlit Cloud:
-
-1. **Acesse o portal gratuito:** [**share.streamlit.io**](https://share.streamlit.io) e faça login com sua conta do GitHub.
-2. **Crie um novo app ("New app"):**
-   - **Repository:** `Rodrigo-Ogura/SIMULADOR-CIMENTACAO`
-   - **Branch:** `main`
-   - **Main file path:** `app.py`
-3. **Configure a Chave da Groq com Segurança Criptografada:**
-   - Em **Advanced settings... > Secrets**, adicione sua chave de IA:
-     ```toml
-     GROQ_API_KEY = "gsk_sua_chave_groq_aqui"
-     ```
-4. **Clique em "Deploy!":** O Streamlit compilará a aplicação e fornecerá um link público instantâneo (ex: `https://simulador-cimentacao.streamlit.app`).
-
-> 📘 Para um guia detalhado com capturas de tela e boas práticas de segurança, consulte o [**04. Guia de Deploy Online no Streamlit Cloud**](./docs/02_SISTEMA_E_IA/04_guia_deploy_online.md).
-
----
-
-## 💻 Como Executar Localmente no seu Computador
+Caso deseje rodar a aplicação em seu computador próprio de forma offline com **Ollama local**:
 
 ### Pré-requisitos
 - **Python 3.10 ou superior** instalado.
