@@ -33,8 +33,11 @@ Documento de registro contínuo de evolução, alterações de código, testes e
 - **Deploy Online Seguro no Streamlit Cloud & GitHub** ([simulador-cimentacao-usp.streamlit.app](https://simulador-cimentacao-usp.streamlit.app)).
 - **Tradução da Barra de Status para Português:** *"Simulador de Cimentação & Engenharia de Poço"*.
 - **Correção em `AditivoService` (`aditivo_service.py`):**
-  - Implementação dos métodos ausentes `obter_dataframe()`, `salvar_banco()` e `restaurar_padrao()` que causavam `AttributeError` no deploy do Streamlit Cloud.
-  - Testado via script Python com 26 aditivos renderizados com sucesso e enviado para o GitHub (`git push`).
+  - Implementação dos métodos `obter_dataframe()`, `salvar_banco()` e `restaurar_padrao()` com verificações defensivas completas.
+- **Correção de Ciclo de Vida de Estado do Streamlit (`StreamlitWidgetAlreadyInstantiatedError`):**
+  - Centralização da inicialização das variáveis de sessão no topo de `app.py` antes da criação de widgets.
+  - Eliminação de duplicidade de chaves de widgets entre a Aba 1 e Aba 3.
+  - Enviado para o GitHub (`git push`) e sincronizado no Streamlit Cloud.
 
 ---
 
