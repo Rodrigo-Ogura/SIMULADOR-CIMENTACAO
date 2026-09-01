@@ -177,9 +177,6 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             st.session_state["ia_lcm"] = False
             st.session_state["ia_obs"] = "Cimentação de revestimento condutor/superfície em águas rasas e baixas temperaturas."
 
-    if "ia_topo" not in st.session_state:
-        st.session_state["preset_cenario_poco"] = "🔥 Poço Profundo & Alta Temperatura (BHCT 75°C, BHST 115°C, Permeável)"
-        _atualizar_preset_callback()
 
     c_pre, c_alvo = st.columns([1.8, 1.4])
     with c_pre:

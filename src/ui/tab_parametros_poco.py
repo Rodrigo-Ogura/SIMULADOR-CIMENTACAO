@@ -81,46 +81,36 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
             </div>
             """, unsafe_allow_html=True)
 
-        # 2. Resumo da Janela Geomecânica (Sincronizada diretamente com a Aba 3 - Módulo Especialista)
+        # 2. Resumo da Janela Geomecânica (Integrada dinamicamente com a Aba 3 - Módulo Especialista)
         with st.container(border=True):
             st.markdown("##### 🛡️ Janela Geomecânica & Fluido no Poço")
-            st.caption("Os limites geomecânicos e o fluido de perfuração estão integrados em tempo real com o **Módulo Especialista (Aba 3)**:")
-
-            if "ia_dens_lama" not in st.session_state:
-                st.session_state["ia_dens_lama"] = 9.50
+            st.caption("Limites geomecânicos e densidade da lama integrados em tempo real com o **Módulo Especialista (Aba 3)**:")
 
             poro_atual = float(st.session_state.get("ia_poro", 10.20))
             frac_atual = float(st.session_state.get("ia_frac", 16.80))
-            
-            dens_lama = st.number_input(
-                "Densidade da Lama de Perfuração no Poço (ppg):",
-                min_value=8.0,
-                max_value=20.0,
-                step=0.10,
-                key="ia_dens_lama",
-                help="Densidade do fluido de perfuração atualmente no poço antes do bombeio da cimentação. Sincronizado com a Aba 3."
-            )
+            dens_lama = float(st.session_state.get("ia_dens_lama", 10.60))
 
             corredor_fundo = frac_atual - poro_atual
             overbalance_lama = dens_lama - poro_atual
             margem_fratura_lama = frac_atual - dens_lama
 
             st.markdown(f"""
-            <div style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <div style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 12px 14px; margin-top: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.83rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                     <span style="color: #f59e0b;">Grad. Poro (Base): <b>{poro_atual:.2f} ppg</b></span>
                     <span style="color: #ef4444;">Grad. Fratura (Base): <b>{frac_atual:.2f} ppg</b></span>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #cbd5e1;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #cbd5e1;">
                     <span>Lama no Poço: <b>{dens_lama:.2f} ppg</b></span>
                     <span style="color: {'#10b981' if overbalance_lama >= 0.3 else '#ef4444'};">Overbalance: <b>{'+' if overbalance_lama>=0 else ''}{overbalance_lama:.2f} ppg</b></span>
                 </div>
-                <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 0.76rem;">
                     <span>Corredor Geomecânico: <b>{corredor_fundo:.2f} ppg</b></span>
                     <span>Margem Frat. Lama: <b>+{margem_fratura_lama:.2f} ppg</b></span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
+            st.caption("💡 *Para ajustar as pressões de poro, fratura ou densidade da lama, utilize o painel da **Aba 3 (Módulo Especialista)**.*")
 
     with col_banco:
         # 3. Gestão e Auditoria do Catálogo de Aditivos

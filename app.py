@@ -20,6 +20,28 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Inicialização segura da Session State no topo do script (antes de instanciar qualquer widget)
+if 'aditivos_db' not in st.session_state:
+    st.session_state.aditivos_db = AditivoService.inicializar_banco()
+
+if 'ia_dens_lama' not in st.session_state:
+    st.session_state['ia_topo'] = 1800.0
+    st.session_state['ia_base'] = 3200.0
+    st.session_state['ia_poro'] = 10.20
+    st.session_state['ia_frac'] = 16.80
+    st.session_state['ia_dens_lama'] = 10.60
+    st.session_state['ia_dmin'] = 15.60
+    st.session_state['ia_dmax'] = 16.20
+    st.session_state['ia_bhst'] = 115.0
+    st.session_state['ia_bhct'] = 75.0
+    st.session_state['ia_tbomb'] = 150
+    st.session_state['ia_perm'] = True
+    st.session_state['ia_gas'] = False
+    st.session_state['ia_lcm'] = False
+    st.session_state['ia_reologia'] = False
+    st.session_state['ia_obs'] = "Formação arenosa profunda de alta temperatura com risco de degradação térmica e perda de filtrado."
+    st.session_state['preset_cenario_poco'] = "🔥 Poço Profundo & Alta Temperatura (BHCT 75°C, BHST 115°C, Permeável)"
+
 # Injeção de CSS Industrial de Alto Padrão com Tipografia Harmoniosa e Legível
 st.markdown("""
 <style>
@@ -48,35 +70,36 @@ st.markdown("""
     }
 
     /* Labels de Inputs e Formulários */
-    label, [data-testid="stWidgetLabel"] p {
-        font-size: 0.90rem !important;
+    .stNumberInput label, .stTextInput label, .stSelectbox label, .stRadio label {
+        font-size: 0.88rem !important;
         font-weight: 600 !important;
-        color: #cbd5e1 !important;
+        color: #e2e8f0 !important;
+        margin-bottom: 3px !important;
     }
 
-    /* Header de Telemetria Superior Estilo Rig Control Room */
+    /* Cabeçalho Industrial OpenLab Style */
     .rig-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
         background: linear-gradient(90deg, #111827 0%, #1e293b 100%);
         border: 1px solid #334155;
         border-radius: 8px;
         padding: 12px 20px;
-        margin-bottom: 18px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        margin-bottom: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     }
     .rig-title {
-        font-size: 1.25rem;
+        font-size: 1.05rem;
         font-weight: 700;
-        color: #38bdf8;
-        letter-spacing: -0.02em;
+        color: #f8fafc;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
+        letter-spacing: -0.01em;
     }
     .rig-badge {
-        background-color: #0f172a;
+        background-color: rgba(2, 132, 199, 0.2);
         border: 1px solid #0284c7;
         color: #38bdf8;
         padding: 3px 9px;
@@ -163,10 +186,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-# Inicialização da Session State para o banco de aditivos
-if 'aditivos_db' not in st.session_state:
-    st.session_state.aditivos_db = AditivoService.inicializar_banco()
 
 # Cabeçalho Superior Estilo Sala de Controle OpenLab
 st.markdown("""
