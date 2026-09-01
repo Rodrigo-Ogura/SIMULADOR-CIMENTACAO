@@ -82,18 +82,12 @@ Caso deseje rodar a aplicação em seu computador próprio de forma offline com 
    pip install -r requirements.txt
    ```
 
-3. **(Opcional) Configure a chave do Groq local:**
-   Crie um arquivo `.env` na raiz do projeto:
-   ```env
-   GROQ_API_KEY=gsk_sua_chave_aqui
-   ```
-
-4. **Inicie a aplicação:**
+3. **Inicie a aplicação:**
    ```bash
    streamlit run app.py
    ```
 
-5. **Acesse no navegador:** `http://localhost:8501`.
+4. **Acesse no navegador:** `http://localhost:8501`.
 
 ---
 
