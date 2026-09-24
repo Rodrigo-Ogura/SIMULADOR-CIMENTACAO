@@ -79,6 +79,14 @@ Você deve gerar uma formulação tecnicamente rigorosa e consistente. Siga estr
    - A lama de perfuração deve manter overbalance sobre a pressão de poros (+0.30 a +0.80 ppg).
    - Para evitar canalização e instabilidade de Rayleigh-Taylor, a densidade da pasta de cimento deve superar a densidade da lama (densidade_lama < densidade_lead <= densidade_tail).
    - Indique sempre a `densidade_lama_recomendada_ppg` avaliando a janela geomecânica.
+7. PASTA INTERMEDIÁRIA (MIDDLE / RESERVATÓRIO / GÁS):
+   - Densidade intermediária entre Lead e Tail (ex: 14.5 a 15.6 ppg).
+   - Uso mandatório de 'Controlador de Filtrado HALDAD-9' ou 'HALDAD-14' (0.3% a 0.6% BWOC) para isolamento de gás e integridade de reservatório.
+   - Retardador conforme o BHCT da seção produtora.
+8. PASTA DE VARREDURA (SCAVENGER SLURRY):
+   - Ultraleve (10.5 a 12.0 ppg).
+   - Altamente dispersa com 'Dispersante CFR-2' ou 'CFR-1' (0.30% a 0.60% BWOC) para lavagem mecânica e carreamento de reboco.
+   - 'Bentonita (Gel)' (2.0% a 3.5% BWOC) para controle de água livre.
 
 --- CATÁLOGO FECHADO DE ADITIVOS HOMOLOGADOS ---
 {catalogo_formatado}
@@ -112,6 +120,35 @@ Exemplo 2 (Poço Profundo HPHT: BHCT 85°C, BHST 125°C, densidade 16.5 ppg, lam
     {{"nome": "Barita", "concentracao_bwoc_pct": 20.0, "justificativa": "Densificante para atingir a densidade alvo de 16.5 ppg."}}
   ],
   "parecer_tecnico": "Pasta densificada e termoestável para isolamento de zona HPHT com overbalance garantido."
+}}
+
+Exemplo 3 (Pasta Intermediária / Reservatório & Gás: BHCT 65°C, densidade 15.2 ppg, lama 10.2 ppg):
+{{
+  "pasta_nome": "Middle Slurry (Reservatório / Gás)",
+  "classe_cimento": "G",
+  "densidade_alvo_ppg": 15.2,
+  "densidade_lama_recomendada_ppg": 10.2,
+  "agua_gal_sk": 5.2,
+  "aditivos": [
+    {{"nome": "Controlador de Filtrado HALDAD-9", "concentracao_bwoc_pct": 0.45, "justificativa": "Controle rigoroso de filtrado API (<50 mL) e bloqueio contra migração de gás."}},
+    {{"nome": "Retardador HR-4", "concentracao_bwoc_pct": 0.25, "justificativa": "Retardador de média temperatura para BHCT de 65°C."}},
+    {{"nome": "Dispersante CFR-2", "concentracao_bwoc_pct": 0.20, "justificativa": "Compatibilização reológica e redução de água livre."}}
+  ],
+  "parecer_tecnico": "Pasta intermediária de alta integridade para vedação de gás e preservação da formação produtora."
+}}
+
+Exemplo 4 (Pasta de Varredura / Scavenger: densidade 11.5 ppg, lama 9.8 ppg):
+{{
+  "pasta_nome": "Scavenger Slurry (Varredura)",
+  "classe_cimento": "G",
+  "densidade_alvo_ppg": 11.5,
+  "densidade_lama_recomendada_ppg": 9.8,
+  "agua_gal_sk": 8.0,
+  "aditivos": [
+    {{"nome": "Dispersante CFR-2", "concentracao_bwoc_pct": 0.50, "justificativa": "Alta dispersão para lavagem de reboco e arraste de lama residual em escoamento turbulento."}},
+    {{"nome": "Bentonita (Gel)", "concentracao_bwoc_pct": 3.0, "justificativa": "Extensor para atingir 11.5 ppg e evitar separação de água livre."}}
+  ],
+  "parecer_tecnico": "Pasta de varredura ultraleve e superdispersa bombeada à frente para limpeza do anular."
 }}
 
 FORMATO OBRIGATÓRIO: responda SOMENTE um JSON válido, sem texto fora do objeto.
@@ -187,7 +224,7 @@ def recomendar_formulacao(
     if erros_entrada:
         return False, None, "Dados do poço inválidos: " + " | ".join(erros_entrada)
 
-    requisitos = derivar_requisitos(dados_poco)
+    requisitos = derivar_requisitos(dados_poco, tipo_pasta)
     mensagens: List[Dict[str, str]] = [
         {"role": "system", "content": _construir_prompt_sistema(catalogo_aditivos)},
         {"role": "user", "content": _construir_prompt_usuario(dados_poco, tipo_pasta, requisitos)},

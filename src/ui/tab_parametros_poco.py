@@ -17,9 +17,42 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
     st.markdown("### 📐 Geometria do Poço, Geomecânica & Banco de Aditivos")
     st.caption("Configuração dimensional da coluna, folgas anulares e limites operacionais de pressão de poro/fratura:")
 
+    # Inicialização de estado seguro para parâmetros geométricos
+    if "param_d_broca" not in st.session_state:
+        st.session_state["param_d_broca"] = 17.000
+    if "param_d_ext" not in st.session_state:
+        st.session_state["param_d_ext"] = 13.375
+    if "param_d_int" not in st.session_state:
+        st.session_state["param_d_int"] = 12.415
+    if "param_fator_excesso" not in st.session_state:
+        st.session_state["param_fator_excesso"] = 1.75
+    if "param_dist_sapata" not in st.session_state:
+        st.session_state["param_dist_sapata"] = 40.0
+
     col_geom, col_banco = st.columns([1.1, 1], gap="large")
 
     with col_geom:
+        # Sincronização Inteligente com o Perfil da Aba 1 (Janela Geomecânica)
+        perfil_ativo = st.session_state.get("perfil_geomecanico_ativo", None)
+        meta_ativo = st.session_state.get("metadados_geomecanicos_ativos", None)
+        fonte_nome = st.session_state.get("fonte_geomecanica_ativa", "Perfil Ativo")
+
+        if perfil_ativo is not None:
+            with st.container(border=True):
+                c_snc1, c_snc2 = st.columns([1.8, 1.2])
+                with c_snc1:
+                    st.caption(f"🌐 **Perfil Conectado da Aba 1:** `{fonte_nome}`")
+                with c_snc2:
+                    if meta_ativo:
+                        if st.button("🪄 Puxar Dados do Poço", key="btn_sync_geom", help="Preenche diâmetros e lama com base no histórico do poço carregado na Aba 1.", use_container_width=True):
+                            st.session_state["param_d_broca"] = float(meta_ativo.get("d_broca_in", 17.0))
+                            st.session_state["param_d_ext"] = float(meta_ativo.get("d_ext_in", 13.375))
+                            st.session_state["param_d_int"] = float(meta_ativo.get("d_int_in", 12.415))
+                            st.session_state["ia_dens_lama"] = float(meta_ativo.get("dens_lama_fundo_ppg", 10.60))
+                            st.rerun()
+                    else:
+                        st.caption("ℹ️ CSV Customizado ativo. Diâmetros nominais mantidos para preenchimento manual.")
+
         # 1. Parâmetros Geométricos
         with st.container(border=True):
             st.markdown("##### ⚙️ Parâmetros Geométricos de Perfuração")
@@ -28,7 +61,6 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
             with c_g1:
                 d_broca = st.number_input(
                     "Diâmetro da Broca / Poço Aberto (in):",
-                    value=17.000,
                     format="%.3f",
                     step=0.125,
                     key="param_d_broca",
@@ -36,7 +68,6 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
                 )
                 d_ext = st.number_input(
                     "Diâmetro Externo Revestimento OD (in):",
-                    value=13.375,
                     format="%.3f",
                     step=0.125,
                     key="param_d_ext",
@@ -45,7 +76,6 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
             with c_g2:
                 d_int = st.number_input(
                     "Diâmetro Interno Revestimento ID (in):",
-                    value=12.415,
                     format="%.3f",
                     step=0.125,
                     key="param_d_int",
@@ -53,7 +83,6 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
                 )
                 fator_excesso = st.number_input(
                     "Fator de Excesso Anular (Washout):",
-                    value=1.75,
                     format="%.2f",
                     step=0.05,
                     key="param_fator_excesso",
@@ -62,12 +91,12 @@ def render_parametros_poco(aditivos_db: Dict[str, dict]) -> Tuple[Dict[str, floa
 
             dist_sapata = st.number_input(
                 "Distância Colar Flutuador até a Sapata (ft):",
-                value=40.0,
                 format="%.1f",
                 step=5.0,
                 key="param_dist_sapata",
                 help="Comprimento do bolsão de cimento remanescente no interior do revestimento (*Shoe Track*)."
             )
+
 
             # Telemetria da folga anular
             folga_diametral = d_broca - d_ext

@@ -1,0 +1,1 @@
+Cada poço tem 3 variações. A,B e K. "A" é com os dados reais como meu simulador antigos com as formula antiga calculava, "B" é com umas fórmulas e parâmetros modificados e "K" é uma variação sintética que tem os dados misturados dos poços

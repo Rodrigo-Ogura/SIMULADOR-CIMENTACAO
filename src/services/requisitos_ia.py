@@ -45,6 +45,22 @@ def validar_dados_poco(dados_poco: Dict[str, Any]) -> List[str]:
     return erros
 
 
+# Limites Físicos Absolutos de Campo por Categoria de Aditivo (% BWOC)
+# Fundamentado em API Spec 10A, API RP 10B, Nelson & Guillot e Bourgoyne et al. (Cap. 3).
+# Qualquer dosagem fora destas faixas indica erro de formulação ou alucinação do modelo.
+LIMITES_FISICOS_DOSAGEM: Dict[str, Tuple[float, float]] = {
+    "Acelerador": (0.20, 4.00),             # Acima de 4% causa pega prematura (flash set) e corrosão
+    "Retardador": (0.05, 2.00),             # Acima de 2% impede a hidratação e ganho de resistência
+    "Dispersante": (0.05, 1.50),            # Acima de 1.5% induz retardo severo e sedimentação
+    "Controlador de Filtrado": (0.10, 2.50), # Faixa clássica API para filtração anular (0.2 a 1.5% BWOC)
+    "Extensor": (0.50, 15.00),              # Bentonita max 5%, perlita/gilsonita até 12-15%
+    "Densificante": (5.00, 50.00),          # Barita / Hematita para pastas densas (10 a 50% BWOC)
+    "Perda de Circulação (LCM)": (0.50, 15.00), # Selantes mecânicos particulados
+    "Estabilizador Térmico": (25.00, 40.00), # Flor de Sílica (SSA-1): 30 a 35% BWOC obrigatório
+    "Especial / Outro": (0.10, 5.00),
+}
+
+
 def _reologia_critica(dados_poco: Dict[str, Any]) -> bool:
     if bool(dados_poco.get("reologia_critica", False)):
         return True
@@ -53,13 +69,14 @@ def _reologia_critica(dados_poco: Dict[str, Any]) -> bool:
     return any(termo in texto for termo in termos)
 
 
-def derivar_requisitos(dados_poco: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Converte condições de poço em requisitos críticos verificáveis."""
+def derivar_requisitos(dados_poco: Dict[str, Any], tipo_pasta: str = "Tail Slurry") -> List[Dict[str, Any]]:
+    """Converte condições de poço e o papel funcional da pasta em requisitos críticos verificáveis."""
     dens_min = _numero(dados_poco.get("densidade_min_alvo"))
     dens_max = _numero(dados_poco.get("densidade_max_alvo"))
     dens_lama = _numero(dados_poco.get("dens_lama"))
     bhct = _numero(dados_poco.get("bhct_c"))
     bhst = _numero(dados_poco.get("bhst_c"))
+    tipo_lower = str(tipo_pasta).lower()
 
     requisitos: List[Dict[str, Any]] = [
         {
@@ -80,22 +97,54 @@ def derivar_requisitos(dados_poco: Dict[str, Any]) -> List[Dict[str, Any]]:
             "dens_lama": dens_lama
         })
 
-    if dens_max < 15.0:
-        requisitos.append({"id": "extensor_densidade_baixa", "descricao": "Extensor para densidade-alvo abaixo de 15,0 ppg", "tipo": "categoria", "categoria": "Extensor"})
-    if dens_min > 16.2:
-        requisitos.append({"id": "densificante_densidade_alta", "descricao": "Densificante para densidade-alvo acima de 16,2 ppg", "tipo": "categoria", "categoria": "Densificante"})
-    if bhct > 50.0:
-        requisitos.append({"id": "retardador_bhct", "descricao": "Retardador por BHCT acima de 50 °C", "tipo": "categoria_dosagem", "categoria": "Retardador", "minimo": 0.1, "maximo": 1.5})
-    if bhct < 25.0:
-        requisitos.append({"id": "acelerador_bhct", "descricao": "Acelerador por BHCT abaixo de 25 °C", "tipo": "categoria", "categoria": "Acelerador"})
-    if bhst > 110.0:
-        requisitos.append({"id": "silica_bhst", "descricao": "Flor de Sílica (SSA-1) entre 30% e 35% BWOC por BHST acima de 110 °C", "tipo": "aditivo_dosagem", "nome": "Flor de Sílica (SSA-1)", "minimo": 30.0, "maximo": 35.0})
-    if bool(dados_poco.get("zona_permeavel")) or bool(dados_poco.get("presenca_gas")):
-        requisitos.append({"id": "controle_filtrado", "descricao": "Controlador de filtrado por permeabilidade ou risco de gás", "tipo": "categoria", "categoria": "Controlador de Filtrado"})
-    if bool(dados_poco.get("perda_circulacao")):
-        requisitos.append({"id": "lcm_perda_circulacao", "descricao": "Aditivo de perda de circulação por risco de perda natural", "tipo": "categoria", "categoria": "Perda de Circulação (LCM)"})
-    if _reologia_critica(dados_poco):
-        requisitos.append({"id": "dispersante_reologia", "descricao": "Dispersante por reologia crítica ou perda de carga alta", "tipo": "categoria", "categoria": "Dispersante"})
+    # Regras específicas conforme a função operacional da pasta no poço
+    if "scavenger" in tipo_lower or "varredura" in tipo_lower:
+        requisitos.append({
+            "id": "dispersante_scavenger",
+            "descricao": "Dispersante mandatório (0.25% a 1.2% BWOC) para carreamento de reboco em pasta de varredura",
+            "tipo": "categoria_dosagem",
+            "categoria": "Dispersante",
+            "minimo": 0.25,
+            "maximo": 1.20
+        })
+        requisitos.append({
+            "id": "extensor_scavenger",
+            "descricao": "Extensor mandatório para estabilidade e controle de água livre em pasta ultraleve",
+            "tipo": "categoria",
+            "categoria": "Extensor"
+        })
+    elif "middle" in tipo_lower or "intermedi" in tipo_lower or "reservat" in tipo_lower:
+        # Pasta intermediária de isolamento de zona produtora / gás
+        requisitos.append({
+            "id": "controle_filtrado_reservatorio",
+            "descricao": "Controlador de filtrado mandatório (API RP 10B) para vedação de hidrocarbonetos e proteção do reservatório",
+            "tipo": "categoria",
+            "categoria": "Controlador de Filtrado"
+        })
+        if bhct > 50.0:
+            requisitos.append({"id": "retardador_bhct", "descricao": "Retardador por BHCT acima de 50 °C", "tipo": "categoria_dosagem", "categoria": "Retardador", "minimo": 0.1, "maximo": 1.5})
+    else:
+        # Regras gerais para Lead / Tail
+        if dens_max < 15.0:
+            requisitos.append({"id": "extensor_densidade_baixa", "descricao": "Extensor para densidade-alvo abaixo de 15,0 ppg", "tipo": "categoria", "categoria": "Extensor"})
+        if dens_min > 16.2:
+            requisitos.append({"id": "densificante_densidade_alta", "descricao": "Densificante para densidade-alvo acima de 16,2 ppg", "tipo": "categoria", "categoria": "Densificante"})
+        if bhct > 50.0:
+            requisitos.append({"id": "retardador_bhct", "descricao": "Retardador por BHCT acima de 50 °C", "tipo": "categoria_dosagem", "categoria": "Retardador", "minimo": 0.1, "maximo": 1.5})
+        if bhct < 25.0:
+            requisitos.append({"id": "acelerador_bhct", "descricao": "Acelerador por BHCT abaixo de 25 °C", "tipo": "categoria", "categoria": "Acelerador"})
+        
+        # Flor de Sílica obrigatória na sapata se temperatura de estática de fundo > 110 °C
+        if bhst > 110.0 and ("tail" in tipo_lower or "sapata" in tipo_lower or "fundo" in tipo_lower):
+            requisitos.append({"id": "silica_bhst", "descricao": "Flor de Sílica (SSA-1) entre 30% e 35% BWOC por BHST acima de 110 °C na sapata", "tipo": "aditivo_dosagem", "nome": "Flor de Sílica (SSA-1)", "minimo": 30.0, "maximo": 35.0})
+        
+        if bool(dados_poco.get("zona_permeavel")) or bool(dados_poco.get("presenca_gas")):
+            requisitos.append({"id": "controle_filtrado", "descricao": "Controlador de filtrado por permeabilidade ou risco de gás", "tipo": "categoria", "categoria": "Controlador de Filtrado"})
+        if bool(dados_poco.get("perda_circulacao")):
+            requisitos.append({"id": "lcm_perda_circulacao", "descricao": "Aditivo de perda de circulação por risco de perda natural", "tipo": "categoria", "categoria": "Perda de Circulação (LCM)"})
+        if _reologia_critica(dados_poco):
+            requisitos.append({"id": "dispersante_reologia", "descricao": "Dispersante por reologia crítica ou perda de carga alta", "tipo": "categoria", "categoria": "Dispersante"})
+
     return requisitos
 
 
@@ -190,6 +239,33 @@ def validar_recomendacao(resposta: Dict[str, Any], requisitos: List[Dict[str, An
     if rejeitados:
         verificacoes.append({"id": "catalogo_fechado", "descricao": "Todos os aditivos devem pertencer ao catálogo local", "atendido": False, "observado": ", ".join(rejeitados), "bloqueante": True})
 
+    # Verificação de Limites Físicos Absolutos de Campo para cada aditivo sugerido
+    for ad in aditivos:
+        nome_ad = ad.get("nome", "")
+        dose_ad = _numero(ad.get("concentracao_bwoc_pct", ad.get("concentracao")), -1)
+        cat = catalogo_aditivos.get(nome_ad, {}).get("categoria", "")
+
+        if dose_ad <= 0:
+            verificacoes.append({
+                "id": f"dosagem_positiva_{nome_ad}",
+                "descricao": f"A dosagem de '{nome_ad}' deve ser positiva e maior que zero",
+                "atendido": False,
+                "observado": f"{dose_ad:.2f}% BWOC (inválido)",
+                "bloqueante": True
+            })
+            continue
+
+        if cat in LIMITES_FISICOS_DOSAGEM:
+            lim_min, lim_max = LIMITES_FISICOS_DOSAGEM[cat]
+            if not (lim_min <= dose_ad <= lim_max):
+                verificacoes.append({
+                    "id": f"limite_fisico_{nome_ad}",
+                    "descricao": f"Dosagem de '{nome_ad}' ({cat}) deve estar na faixa física admissível ({lim_min:.2f}% a {lim_max:.2f}% BWOC)",
+                    "atendido": False,
+                    "observado": f"{dose_ad:.2f}% BWOC (fora dos limites seguros de campo)",
+                    "bloqueante": True
+                })
+
     pendencias = [item for item in verificacoes if not item["atendido"]]
     return {
         "conforme": not pendencias,
@@ -202,4 +278,36 @@ def validar_recomendacao(resposta: Dict[str, Any], requisitos: List[Dict[str, An
 
 def construir_pedido_correcao(validacao: Dict[str, Any]) -> str:
     pendencias = "\n".join(f"- {item['descricao']}. Observado: {item['observado']}." for item in validacao.get("pendencias", []))
-    return f"""A resposta anterior NÃO pode ser aprovada porque falhou em requisitos críticos:\n{pendencias}\n\nGere uma nova resposta JSON completa. Mantenha apenas aditivos do catálogo e use sempre o campo numérico `concentracao_bwoc_pct` em percentual BWOC; por exemplo, 32.0 significa 32%, e 0.32 significa 0,32%. Não explique o erro: devolva somente o JSON corrigido."""
+    return f"""A resposta anterior NÃO pode ser aprovada porque falhou em requisitos críticos de engenharia:\n{pendencias}\n\nGere uma nova resposta JSON completa. Mantenha apenas aditivos do catálogo e use sempre o campo numérico `concentracao_bwoc_pct` em percentual BWOC; por exemplo, 32.0 significa 32%, e 0.32 significa 0,32%. Não explique o erro: devolva somente o JSON corrigido."""
+
+
+def validar_hierarquia_programa(pastas: Dict[str, Dict[str, Any]], dens_lama: float) -> Tuple[bool, List[str]]:
+    """
+    Valida a coerência e hierarquia física de densidades entre as pastas do programa (API RP 10B / Bourgoyne et al. Cap. 3).
+    A densidade deve ser estritamente decrescente do fundo para o topo (crescente na ordem cronológica de bombeio):
+    Lama < Scavenger <= Lead < Middle < Tail
+    """
+    erros: List[str] = []
+    d_tail = _numero(pastas.get("tail", {}).get("densidade_alvo_ppg"))
+    d_middle = _numero(pastas.get("middle", {}).get("densidade_alvo_ppg"))
+    d_lead = _numero(pastas.get("lead", {}).get("densidade_alvo_ppg"))
+    d_scavenger = _numero(pastas.get("scavenger", {}).get("densidade_alvo_ppg"))
+
+    if d_tail > 0 and d_middle > 0:
+        if d_tail <= d_middle:
+            erros.append(f"Inversão de empuxo: A Tail Slurry ({d_tail:.2f} ppg) deve ser mais densa que a Middle Slurry ({d_middle:.2f} ppg).")
+    if d_middle > 0 and d_lead > 0:
+        if d_middle <= d_lead:
+            erros.append(f"Inversão de empuxo: A Middle Slurry ({d_middle:.2f} ppg) deve ser mais densa que a Lead Slurry ({d_lead:.2f} ppg).")
+    if d_tail > 0 and d_lead > 0 and d_middle == 0:
+        if d_tail <= d_lead:
+            erros.append(f"Inversão de empuxo: A Tail Slurry ({d_tail:.2f} ppg) deve ser mais densa que a Lead Slurry ({d_lead:.2f} ppg).")
+    if d_lead > 0 and dens_lama > 0:
+        if d_lead <= dens_lama:
+            erros.append(f"Falha de deslocamento: A Lead Slurry ({d_lead:.2f} ppg) deve ser mais densa que a lama ({dens_lama:.2f} ppg) para eficiência de bombeio.")
+    if d_scavenger > 0 and d_lead > 0:
+        if d_scavenger > d_lead:
+            erros.append(f"A Pasta de Varredura ({d_scavenger:.2f} ppg) não pode ser mais densa que a Lead Slurry ({d_lead:.2f} ppg).")
+
+    return (len(erros) == 0, erros)
+

@@ -16,14 +16,21 @@ def render_config_pastas(aditivos_db: Dict[str, dict]) -> List[ConfigPasta]:
     st.markdown("### 🧪 Formulação & Configuração das Pastas de Cimento")
     st.caption("Especifique a classe API do cimento, altura anular e dosagens percentuais em relação ao peso de cimento (% BWOC):")
     
+    if "num_pastas_anular" not in st.session_state:
+        st.session_state["num_pastas_anular"] = 1
+
+    # Banner de continuidade se houver recomendação prévia da IA
+    if "programa_completo_ia" in st.session_state or "ultima_recomendacao_ia" in st.session_state:
+        st.info("💡 **Formulação Pré-Configurada via IA:** Os parâmetros e aditivos abaixo foram importados do **Módulo Especialista (Aba 3)**. Você pode ajustar livremente dosagens (% BWOC), alturas e volumes.")
+
     col_qp, col_info = st.columns([1.2, 2.8])
     with col_qp:
         quantidade_pastas = st.number_input(
             "Número de Pastas no Anular:",
             min_value=1,
             max_value=4,
-            value=1,
             step=1,
+            key="num_pastas_anular",
             help="1 = Pasta Única; 2 = Lead e Tail; 3 ou 4 = Múltiplos estágios."
         )
 
@@ -36,7 +43,29 @@ def render_config_pastas(aditivos_db: Dict[str, dict]) -> List[ConfigPasta]:
             </div>
             """, unsafe_allow_html=True)
 
-    abas = st.tabs([f"📦 Pasta {i} ({'Sapata / Tail' if i == 1 else f'Lead {i-1}'})" for i in range(1, quantidade_pastas + 1)])
+    def _rotulo_pasta(idx: int, total: int) -> str:
+        if total == 1:
+            return "📦 Pasta 1 (Sapata / Fundo)"
+        elif total == 2:
+            return "📦 Pasta 1 (Sapata / Tail)" if idx == 1 else "📦 Pasta 2 (Preenchimento / Lead)"
+        elif total == 3:
+            if idx == 1:
+                return "📦 Pasta 1 (Sapata / Tail)"
+            elif idx == 2:
+                return "📦 Pasta 2 (Intermediária / Reservatório)"
+            else:
+                return "📦 Pasta 3 (Preenchimento / Lead)"
+        else:
+            if idx == 1:
+                return "📦 Pasta 1 (Sapata / Tail)"
+            elif idx == 2:
+                return "📦 Pasta 2 (Intermediária / Reservatório)"
+            elif idx == 3:
+                return "📦 Pasta 3 (Preenchimento / Lead)"
+            else:
+                return "📦 Pasta 4 (Varredura / Scavenger)"
+
+    abas = st.tabs([_rotulo_pasta(i, int(quantidade_pastas)) for i in range(1, int(quantidade_pastas) + 1)])
     pastas_configuradas = []
 
     # Cores funcionais por categoria

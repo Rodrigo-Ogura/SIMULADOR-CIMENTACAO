@@ -10,6 +10,7 @@ from src.ui.tab_parametros_poco import render_parametros_poco
 from src.ui.tabs_pastas import render_config_pastas
 from src.ui.tab_agente_ia import render_tab_agente_ia
 from src.ui.dashboard import render_dashboard, render_analise_individual
+from src.ui.tab_geomecanica import render_tab_geomecanica
 from src.utils.logger import logger
 
 # Configuração da página Streamlit
@@ -41,6 +42,31 @@ if 'ia_dens_lama' not in st.session_state:
     st.session_state['ia_reologia'] = False
     st.session_state['ia_obs'] = "Formação arenosa profunda de alta temperatura com risco de degradação térmica e perda de filtrado."
     st.session_state['preset_cenario_poco'] = "🔥 Poço Profundo & Alta Temperatura (BHCT 75°C, BHST 115°C, Permeável)"
+
+if 'perfil_geomecanico_ativo' not in st.session_state:
+    try:
+        from src.services.geomecanica_service import GeomecanicaService
+        df_ini = GeomecanicaService.carregar_preset("15/9-13", "B")
+        if df_ini is not None:
+            st.session_state['perfil_geomecanico_ativo'] = df_ini
+            st.session_state['fonte_geomecanica_ativa'] = "Poço 15/9-13 (Var. B)"
+            st.session_state['metadados_geomecanicos_ativos'] = GeomecanicaService.obter_metadados_poco_preset("15/9-13")
+    except Exception:
+        pass
+
+if 'num_pastas_anular' not in st.session_state:
+    st.session_state['num_pastas_anular'] = 1
+
+if 'param_d_broca' not in st.session_state:
+    st.session_state['param_d_broca'] = 17.000
+if 'param_d_ext' not in st.session_state:
+    st.session_state['param_d_ext'] = 13.375
+if 'param_d_int' not in st.session_state:
+    st.session_state['param_d_int'] = 12.415
+if 'param_fator_excesso' not in st.session_state:
+    st.session_state['param_fator_excesso'] = 1.75
+if 'param_dist_sapata' not in st.session_state:
+    st.session_state['param_dist_sapata'] = 40.0
 
 # Injeção de CSS Industrial de Alto Padrão com Tipografia Harmoniosa e Legível
 st.markdown("""
@@ -205,23 +231,33 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 4 Abas Principais de Engenharia
-tab_poco, tab_pastas, tab_ia, tab_resultados = st.tabs([
-    "📐 1. Geometria & Banco de Aditivos",
-    "🧪 2. Configuração das Pastas",
-    "🧠 3. Módulo Especialista de Formulação",
-    "📊 4. Telemetria, Dashboard & Ficha de Traço"
+# 5 Abas Principais de Engenharia — Pipeline Linear de Poço
+tab_geomecanica, tab_poco, tab_ia, tab_pastas, tab_resultados = st.tabs([
+    "🌐 1. Janela Geomecânica & Perfis",
+    "📐 2. Geometria & Banco de Aditivos",
+    "🧠 3. Módulo Especialista (IA)",
+    "🧪 4. Configuração das Pastas",
+    "📊 5. Telemetria & Dashboard Final"
 ])
 
-# 1. Aba de Parâmetros do Poço e Gestão de Aditivos
+# 1. Janela Geomecânica e Perfis Reais de Poço (Entrada de Dados Primária)
+with tab_geomecanica:
+    render_tab_geomecanica()
+
+# 2. Geometria do Poço e Gestão de Aditivos (Sincronizado ou Manual)
 with tab_poco:
     params_poco, aditivos_db = render_parametros_poco(st.session_state.aditivos_db)
 
-# 2. Aba de Configuração das Pastas
+# 3. Módulo Especialista de Formulação & Apoio à Decisão (IA Multi-Provedor)
+with tab_ia:
+    num_pastas_disp = st.session_state.get("num_pastas_anular", 2)
+    render_tab_agente_ia(aditivos_db=aditivos_db, total_pastas=num_pastas_disp)
+
+# 4. Configuração Fina das Pastas de Cimento
 with tab_pastas:
     pastas_config = render_config_pastas(aditivos_db)
 
-# 3. Processamento dos Cálculos do Motor de Cimentação
+# Processamento Hidráulico e Estequiométrico das Pastas
 resultados_finais = processar_calculos_pastas(
     pastas_config=pastas_config,
     aditivos_db=aditivos_db,
@@ -232,11 +268,9 @@ resultados_finais = processar_calculos_pastas(
     dist_sapata=params_poco['dist_sapata']
 )
 
-# 4. Aba do Agente de IA Especialista
-with tab_ia:
-    render_tab_agente_ia(aditivos_db=aditivos_db, total_pastas=len(pastas_config))
-
-# 5. Aba de Resultados e Gráficos
+# 5. Telemetria, Dashboard Final & Ficha de Traço Operacional
 with tab_resultados:
     render_dashboard(resultados_finais, params_poco)
     render_analise_individual(resultados_finais)
+
+

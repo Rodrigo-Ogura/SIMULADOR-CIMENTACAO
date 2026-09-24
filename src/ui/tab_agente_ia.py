@@ -19,6 +19,16 @@ from src.services.groq_agent_service import verificar_status_groq, recomendar_fo
 from src.services.ollama_agent_service import verificar_status_ollama, recomendar_formulacao
 
 
+def _obter_secret_seguro(chave: str) -> str:
+    """Extrai chave de st.secrets de forma segura, tolerante a ausência do arquivo local secrets.toml."""
+    try:
+        if hasattr(st, "secrets") and chave in st.secrets:
+            return str(st.secrets[chave]).strip()
+    except Exception:
+        return ""
+    return ""
+
+
 def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
     """
     Renderiza o módulo especialista de formulação e auditoria de requisitos de cimentação.
@@ -53,8 +63,9 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     st.session_state.get("user_groq_api_key", "")
                     or getattr(config, "GROQ_API_KEY", "")
                 )
-                if hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
-                    chave_configurada = chave_configurada or str(st.secrets["GROQ_API_KEY"]).strip()
+                secret_groq = _obter_secret_seguro("GROQ_API_KEY")
+                if secret_groq:
+                    chave_configurada = chave_configurada or secret_groq
                 
                 if not chave_configurada:
                     user_key = st.text_input(
@@ -177,6 +188,56 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             st.session_state["ia_lcm"] = False
             st.session_state["ia_obs"] = "Cimentação de revestimento condutor/superfície em águas rasas e baixas temperaturas."
 
+    # Sincronização Inteligente com o Perfil Geomecânico da Aba 1
+    perfil_ativo = st.session_state.get("perfil_geomecanico_ativo", None)
+    meta_ativo = st.session_state.get("metadados_geomecanicos_ativos", None)
+    fonte_nome = st.session_state.get("fonte_geomecanica_ativa", "Perfil Ativo")
+
+    if perfil_ativo is not None:
+        from src.services.geomecanica_service import GeomecanicaService
+        metr = GeomecanicaService.extrair_metricas_resumo(perfil_ativo)
+        p_base_est = float(metr.get("prof_max_m", 3200.0))
+        g_poro_est = float(metr.get("poro_max_ppg", 10.20))
+        g_frac_est = float(metr.get("fratura_min_ppg", 16.80))
+        bhst_prev = round(15.0 + 0.030 * p_base_est, 1)
+        bhct_prev = round(max(25.0, bhst_prev * 0.65), 1)
+
+        with st.container(border=True):
+            c_ia_s1, c_ia_s2 = st.columns([2.2, 1.3])
+            with c_ia_s1:
+                st.markdown(f"🌐 **Perfil Geomecânico Conectado (Aba 1):** `{fonte_nome}`")
+                st.caption(
+                    f"Dados extraídos: **TD:** {p_base_est:.0f} m · "
+                    f"**Poro Base:** {g_poro_est:.2f} ppg · **Fratura Base:** {g_frac_est:.2f} ppg · "
+                    f"**BHCT Est.:** {bhct_prev:.0f} °C"
+                )
+            with c_ia_s2:
+                if st.button("🪄 Sincronizar com Perfil da Aba 1", key="btn_sync_ia_profile", type="primary", use_container_width=True):
+                    p_base = p_base_est
+                    p_topo = float(max(0.0, p_base - 1000.0))
+                    g_poro = g_poro_est
+                    g_frac = g_frac_est
+                    
+                    st.session_state["ia_base"] = p_base
+                    st.session_state["ia_topo"] = p_topo
+                    st.session_state["ia_poro"] = g_poro
+                    st.session_state["ia_frac"] = g_frac
+                    
+                    st.session_state["ia_dmin"] = round(g_poro + 0.5, 2)
+                    st.session_state["ia_dmax"] = round(max(g_poro + 1.0, g_frac - 0.5), 2)
+                    
+                    if meta_ativo:
+                        st.session_state["ia_dens_lama"] = float(meta_ativo.get("dens_lama_fundo_ppg", 10.60))
+                    
+                    st.session_state["ia_bhst"] = bhst_prev
+                    st.session_state["ia_bhct"] = bhct_prev
+                    
+                    # Inferência de riscos geomecânicos
+                    largura_min = float(metr.get("largura_min_ppg", 4.0))
+                    st.session_state["ia_reologia"] = (largura_min < 2.0)
+                    st.session_state["ia_perm"] = True
+                    st.session_state["ia_obs"] = f"Poço {fonte_nome}. Perfil geomecânico contínuo carregado da Aba 1 (TD: {p_base:.0f}m, BHCT: {bhct_prev:.0f}°C)."
+                    st.rerun()
 
     c_pre, c_alvo = st.columns([1.8, 1.4])
     with c_pre:
@@ -195,12 +256,24 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         estrategia_ia = st.selectbox(
             "Estratégia de Cimentação:",
             [
-                "🎯 Programa Completo: Lead Slurry (Topo) + Tail Slurry (Fundo)",
-                "🧪 Pasta Individual: Tail Slurry (Sapata / Fundo)",
-                "🧪 Pasta Individual: Lead Slurry (Preenchimento / Topo)"
+                "🎯 Programa Bi-Pasta Clássico: Lead (Topo) + Tail (Sapata)",
+                "🏆 Programa Tri-Pasta Avançado: Lead (Topo) + Intermediária (Reservatório) + Tail (Sapata)",
+                "⚡ Programa Tetra-Pasta: Scavenger (Varredura) + Lead + Intermediária + Tail",
+                "🧪 Pasta Individual Customizada"
             ],
             key="ia_estrategia_selecionada"
         )
+        if "Pasta Individual" in estrategia_ia:
+            st.selectbox(
+                "Função da Pasta Alvo:",
+                [
+                    "Tail Slurry (Sapata / Fundo)",
+                    "Middle Slurry (Intermediária / Reservatório / Gás)",
+                    "Lead Slurry (Preenchimento / Topo)",
+                    "Scavenger Slurry (Varredura)"
+                ],
+                key="ia_tipo_pasta_ind"
+            )
 
     with st.container(border=True):
         c_d1, c_d2, c_d3 = st.columns(3)
@@ -252,8 +325,9 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                 st.session_state.get("user_groq_api_key", "")
                 or getattr(config, "GROQ_API_KEY", "")
             )
-            if hasattr(st, "secrets") and "GROQ_API_KEY" in st.secrets:
-                chave_usada = chave_usada or str(st.secrets["GROQ_API_KEY"]).strip()
+            secret_groq = _obter_secret_seguro("GROQ_API_KEY")
+            if secret_groq:
+                chave_usada = chave_usada or secret_groq
 
             return recomendar_formulacao_groq(
                 dados_poco=dados_entrada,
@@ -271,13 +345,11 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             )
 
     if gerar_clicked:
-        is_programa_completo = "Programa Completo" in estrategia_ia
-
-        if is_programa_completo:
-            with st.spinner(f"Dimensionando Programa Completo (Lead + Tail Slurry) com {modelo_selecionado}..."):
-                # 1. Pasta 1: Tail Slurry (Sapata / Fundo)
+        if "Bi-Pasta" in estrategia_ia:
+            with st.spinner(f"Dimensionando Programa Bi-Pasta (Lead + Tail) com {modelo_selecionado}..."):
+                # 1. Tail Slurry (Sapata / Fundo)
                 dados_tail = {
-                    'prof_topo': prof_topo + (prof_base - prof_topo) * 0.7 if prof_base > prof_topo else prof_topo,
+                    'prof_topo': prof_topo + (prof_base - prof_topo) * 0.70 if prof_base > prof_topo else prof_topo,
                     'prof_base': prof_base,
                     'grad_poro': grad_poro,
                     'grad_fratura': grad_frac,
@@ -291,11 +363,11 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     'presenca_gas': chk_gas,
                     'perda_circulacao': chk_lcm,
                     'reologia_critica': chk_reologia,
-                    'observacoes': f"Pasta de Sapata/Fundo (Tail). Lama no poço: {dens_lama:.2f} ppg. {obs_texto}"
+                    'observacoes': f"Tail Slurry (Sapata): isolamento mecânico de fundo. Lama: {dens_lama:.2f} ppg. {obs_texto}"
                 }
                 suc_tail, res_tail, msg_tail = _executar_ia(dados_tail, "Tail Slurry (Sapata / Fundo)")
 
-                # 2. Pasta 2: Lead Slurry (Preenchimento / Topo)
+                # 2. Lead Slurry (Preenchimento / Topo)
                 lead_grad_frac = max(14.0, grad_frac - 1.5)
                 lead_grad_poro = min(max(8.5, grad_poro - 1.2), 9.0)
                 lead_dmax = min(13.5, lead_grad_frac - 0.6)
@@ -303,38 +375,228 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
 
                 dados_lead = {
                     'prof_topo': prof_topo,
-                    'prof_base': prof_topo + (prof_base - prof_topo) * 0.7 if prof_base > prof_topo else prof_topo + 500.0,
+                    'prof_base': prof_topo + (prof_base - prof_topo) * 0.70 if prof_base > prof_topo else prof_topo + 500.0,
                     'grad_poro': lead_grad_poro,
                     'grad_fratura': lead_grad_frac,
                     'dens_lama': min(dens_lama, lead_dmin - 0.5),
                     'densidade_min_alvo': lead_dmin,
                     'densidade_max_alvo': lead_dmax,
-                    'bhst_c': max(35.0, bhst * 0.70),
-                    'bhct_c': max(25.0, bhct * 0.65),
+                    'bhst_c': max(35.0, round(bhst * 0.70, 1)),
+                    'bhct_c': max(25.0, round(bhct * 0.65, 1)),
                     'tempo_bombeio_min': tempo_bombeio + 30,
                     'zona_permeavel': chk_perm,
                     'presenca_gas': False,
                     'perda_circulacao': chk_lcm,
                     'reologia_critica': chk_reologia,
-                    'observacoes': f"Pasta Leve de Preenchimento (Lead): proteger topo contra fratura. {obs_texto}"
+                    'observacoes': f"Lead Slurry: pasta leve para proteger topo contra fratura. {obs_texto}"
                 }
                 suc_lead, res_lead, msg_lead = _executar_ia(dados_lead, "Lead Slurry (Preenchimento / Topo)")
 
             if suc_tail and suc_lead:
-                st.session_state["programa_completo_ia"] = {"tail": res_tail, "lead": res_lead}
-                st.session_state.pop("ultima_recomendacao_ia", None)
-                st.success("✅ **Programa Completo (Lead + Tail Slurry) Aprovado com 100% de Conformidade nos Guardrails!**")
+                from src.services.requisitos_ia import validar_hierarquia_programa
+                hier_ok, hier_erros = validar_hierarquia_programa({"tail": res_tail, "lead": res_lead}, dens_lama)
+                if not hier_ok:
+                    st.error("❌ Falha de consistência hidrostática entre as pastas:\n" + "\n".join(f"• {e}" for e in hier_erros))
+                else:
+                    st.session_state["programa_completo_ia"] = {"tipo": "bi", "tail": res_tail, "lead": res_lead}
+                    st.session_state.pop("ultima_recomendacao_ia", None)
+                    st.success("✅ **Programa Bi-Pasta (Lead + Tail) Aprovado com 100% de Conformidade nos Guardrails!**")
             else:
                 erros = []
-                if not suc_tail:
-                    erros.append(f"• **Tail Slurry (Sapata / Fundo):** {msg_tail}")
-                if not suc_lead:
-                    erros.append(f"• **Lead Slurry (Preenchimento / Topo):** {msg_lead}")
-                st.error("❌ Falha no dimensionamento do Programa Completo:\n\n" + "\n".join(erros))
+                if not suc_tail: erros.append(f"• **Tail Slurry:** {msg_tail}")
+                if not suc_lead: erros.append(f"• **Lead Slurry:** {msg_lead}")
+                st.error("❌ Falha no dimensionamento do Programa Bi-Pasta:\n\n" + "\n".join(erros))
+
+        elif "Tri-Pasta" in estrategia_ia:
+            with st.spinner(f"Dimensionando Programa Tri-Pasta Avançado (Lead + Intermediária + Tail) com {modelo_selecionado}..."):
+                # 1. Tail Slurry (Sapata / Fundo - 25% inferior)
+                dados_tail = {
+                    'prof_topo': prof_topo + (prof_base - prof_topo) * 0.75 if prof_base > prof_topo else prof_topo,
+                    'prof_base': prof_base,
+                    'grad_poro': grad_poro,
+                    'grad_fratura': grad_frac,
+                    'dens_lama': dens_lama,
+                    'densidade_min_alvo': dens_min,
+                    'densidade_max_alvo': dens_max,
+                    'bhst_c': bhst,
+                    'bhct_c': bhct,
+                    'tempo_bombeio_min': tempo_bombeio,
+                    'zona_permeavel': chk_perm,
+                    'presenca_gas': chk_gas,
+                    'perda_circulacao': chk_lcm,
+                    'reologia_critica': chk_reologia,
+                    'observacoes': f"Tail Slurry (Sapata): máxima resistência mecânica e isolamento da sapata. {obs_texto}"
+                }
+                suc_tail, res_tail, msg_tail = _executar_ia(dados_tail, "Tail Slurry (Sapata / Fundo)")
+
+                # 2. Middle Slurry (Intermediária / Reservatório & Gás - 40% intermediário)
+                mid_dmin = round(max(dens_lama + 0.60, min(14.5, dens_min - 1.2)), 2)
+                mid_dmax = round(min(dens_max - 0.40, max(15.6, dens_min - 0.2)), 2)
+                dados_mid = {
+                    'prof_topo': prof_topo + (prof_base - prof_topo) * 0.35 if prof_base > prof_topo else prof_topo,
+                    'prof_base': prof_topo + (prof_base - prof_topo) * 0.75 if prof_base > prof_topo else prof_base,
+                    'grad_poro': grad_poro,
+                    'grad_fratura': grad_frac,
+                    'dens_lama': dens_lama,
+                    'densidade_min_alvo': mid_dmin,
+                    'densidade_max_alvo': mid_dmax,
+                    'bhst_c': max(35.0, round(bhst * 0.85, 1)),
+                    'bhct_c': max(25.0, round(bhct * 0.80, 1)),
+                    'tempo_bombeio_min': tempo_bombeio + 20,
+                    'zona_permeavel': True,
+                    'presenca_gas': True if chk_gas else False,
+                    'perda_circulacao': chk_lcm,
+                    'reologia_critica': chk_reologia,
+                    'observacoes': f"Middle Slurry (Intermediária): vedação da zona de reservatório/gás e controle estrito de filtrado API. {obs_texto}"
+                }
+                suc_mid, res_mid, msg_mid = _executar_ia(dados_mid, "Middle Slurry (Intermediária / Reservatório / Gás)")
+
+                # 3. Lead Slurry (Preenchimento / Topo - 35% superior)
+                lead_dmax = round(min(13.5, mid_dmin - 0.40), 2)
+                lead_dmin = round(max(11.8, dens_lama + 0.30), 2)
+                dados_lead = {
+                    'prof_topo': prof_topo,
+                    'prof_base': prof_topo + (prof_base - prof_topo) * 0.35 if prof_base > prof_topo else prof_topo + 500.0,
+                    'grad_poro': min(max(8.5, grad_poro - 1.2), 9.0),
+                    'grad_fratura': max(14.0, grad_frac - 1.5),
+                    'dens_lama': min(dens_lama, lead_dmin - 0.5),
+                    'densidade_min_alvo': lead_dmin,
+                    'densidade_max_alvo': lead_dmax,
+                    'bhst_c': max(30.0, round(bhst * 0.65, 1)),
+                    'bhct_c': max(20.0, round(bhct * 0.55, 1)),
+                    'tempo_bombeio_min': tempo_bombeio + 40,
+                    'zona_permeavel': chk_perm,
+                    'presenca_gas': False,
+                    'perda_circulacao': chk_lcm,
+                    'reologia_critica': chk_reologia,
+                    'observacoes': f"Lead Slurry: pasta leve para alívio hidrostático e proteção contra fratura. {obs_texto}"
+                }
+                suc_lead, res_lead, msg_lead = _executar_ia(dados_lead, "Lead Slurry (Preenchimento / Topo)")
+
+            if suc_tail and suc_mid and suc_lead:
+                from src.services.requisitos_ia import validar_hierarquia_programa
+                hier_ok, hier_erros = validar_hierarquia_programa({"tail": res_tail, "middle": res_mid, "lead": res_lead}, dens_lama)
+                if not hier_ok:
+                    st.error("❌ Falha de consistência hidrostática entre as 3 pastas:\n" + "\n".join(f"• {e}" for e in hier_erros))
+                else:
+                    st.session_state["programa_completo_ia"] = {"tipo": "tri", "tail": res_tail, "middle": res_mid, "lead": res_lead}
+                    st.session_state.pop("ultima_recomendacao_ia", None)
+                    st.success("✅ **Programa Tri-Pasta Avançado (Lead + Intermediária + Tail) Aprovado com 100% de Conformidade nos Guardrails!**")
+            else:
+                erros = []
+                if not suc_tail: erros.append(f"• **Tail Slurry (Sapata):** {msg_tail}")
+                if not suc_mid: erros.append(f"• **Middle Slurry (Intermediária):** {msg_mid}")
+                if not suc_lead: erros.append(f"• **Lead Slurry (Preenchimento):** {msg_lead}")
+                st.error("❌ Falha no dimensionamento do Programa Tri-Pasta:\n\n" + "\n".join(erros))
+
+        elif "Tetra-Pasta" in estrategia_ia:
+            with st.spinner(f"Dimensionando Programa Tetra-Pasta com Varredura com {modelo_selecionado}..."):
+                # Tail Slurry
+                dados_tail = {
+                    'prof_topo': prof_topo + (prof_base - prof_topo) * 0.75 if prof_base > prof_topo else prof_topo,
+                    'prof_base': prof_base,
+                    'grad_poro': grad_poro,
+                    'grad_fratura': grad_frac,
+                    'dens_lama': dens_lama,
+                    'densidade_min_alvo': dens_min,
+                    'densidade_max_alvo': dens_max,
+                    'bhst_c': bhst,
+                    'bhct_c': bhct,
+                    'tempo_bombeio_min': tempo_bombeio,
+                    'zona_permeavel': chk_perm,
+                    'presenca_gas': chk_gas,
+                    'perda_circulacao': chk_lcm,
+                    'reologia_critica': chk_reologia,
+                    'observacoes': f"Tail Slurry (Sapata): máxima resistência mecânica. {obs_texto}"
+                }
+                suc_tail, res_tail, msg_tail = _executar_ia(dados_tail, "Tail Slurry (Sapata / Fundo)")
+
+                # Middle Slurry
+                mid_dmin = round(max(dens_lama + 0.60, min(14.5, dens_min - 1.2)), 2)
+                mid_dmax = round(min(dens_max - 0.40, max(15.6, dens_min - 0.2)), 2)
+                dados_mid = {
+                    'prof_topo': prof_topo + (prof_base - prof_topo) * 0.40 if prof_base > prof_topo else prof_topo,
+                    'prof_base': prof_topo + (prof_base - prof_topo) * 0.75 if prof_base > prof_topo else prof_base,
+                    'grad_poro': grad_poro,
+                    'grad_fratura': grad_frac,
+                    'dens_lama': dens_lama,
+                    'densidade_min_alvo': mid_dmin,
+                    'densidade_max_alvo': mid_dmax,
+                    'bhst_c': max(35.0, round(bhst * 0.85, 1)),
+                    'bhct_c': max(25.0, round(bhct * 0.80, 1)),
+                    'tempo_bombeio_min': tempo_bombeio + 20,
+                    'zona_permeavel': True,
+                    'presenca_gas': True,
+                    'perda_circulacao': chk_lcm,
+                    'reologia_critica': chk_reologia,
+                    'observacoes': f"Middle Slurry (Reservatório): vedação de hidrocarbonetos e filtrado API. {obs_texto}"
+                }
+                suc_mid, res_mid, msg_mid = _executar_ia(dados_mid, "Middle Slurry (Intermediária / Reservatório / Gás)")
+
+                # Lead Slurry
+                lead_dmax = round(min(13.5, mid_dmin - 0.40), 2)
+                lead_dmin = round(max(11.8, dens_lama + 0.30), 2)
+                dados_lead = {
+                    'prof_topo': prof_topo + 200.0,
+                    'prof_base': prof_topo + (prof_base - prof_topo) * 0.40 if prof_base > prof_topo else prof_topo + 500.0,
+                    'grad_poro': min(max(8.5, grad_poro - 1.2), 9.0),
+                    'grad_fratura': max(14.0, grad_frac - 1.5),
+                    'dens_lama': min(dens_lama, lead_dmin - 0.5),
+                    'densidade_min_alvo': lead_dmin,
+                    'densidade_max_alvo': lead_dmax,
+                    'bhst_c': max(30.0, round(bhst * 0.65, 1)),
+                    'bhct_c': max(20.0, round(bhct * 0.55, 1)),
+                    'tempo_bombeio_min': tempo_bombeio + 35,
+                    'zona_permeavel': chk_perm,
+                    'presenca_gas': False,
+                    'perda_circulacao': chk_lcm,
+                    'reologia_critica': chk_reologia,
+                    'observacoes': f"Lead Slurry: pasta leve para alívio anular. {obs_texto}"
+                }
+                suc_lead, res_lead, msg_lead = _executar_ia(dados_lead, "Lead Slurry (Preenchimento / Topo)")
+
+                # Scavenger Slurry
+                scav_dmin = round(max(10.5, dens_lama - 0.2), 2)
+                scav_dmax = round(min(11.8, lead_dmin - 0.1), 2)
+                dados_scav = {
+                    'prof_topo': prof_topo,
+                    'prof_base': prof_topo + 200.0,
+                    'grad_poro': min(8.6, grad_poro),
+                    'grad_fratura': max(13.5, grad_frac - 2.0),
+                    'dens_lama': dens_lama,
+                    'densidade_min_alvo': scav_dmin,
+                    'densidade_max_alvo': scav_dmax,
+                    'bhst_c': 25.0,
+                    'bhct_c': 20.0,
+                    'tempo_bombeio_min': 60,
+                    'zona_permeavel': False,
+                    'presenca_gas': False,
+                    'perda_circulacao': False,
+                    'reologia_critica': True,
+                    'observacoes': f"Scavenger Slurry: pasta de varredura ultraleve com alto teor de dispersante para limpeza de reboco. {obs_texto}"
+                }
+                suc_scav, res_scav, msg_scav = _executar_ia(dados_scav, "Scavenger Slurry (Varredura)")
+
+            if suc_tail and suc_mid and suc_lead and suc_scav:
+                from src.services.requisitos_ia import validar_hierarquia_programa
+                hier_ok, hier_erros = validar_hierarquia_programa({"tail": res_tail, "middle": res_mid, "lead": res_lead, "scavenger": res_scav}, dens_lama)
+                if not hier_ok:
+                    st.error("❌ Falha de consistência hidrostática entre as 4 pastas:\n" + "\n".join(f"• {e}" for e in hier_erros))
+                else:
+                    st.session_state["programa_completo_ia"] = {"tipo": "tetra", "tail": res_tail, "middle": res_mid, "lead": res_lead, "scavenger": res_scav}
+                    st.session_state.pop("ultima_recomendacao_ia", None)
+                    st.success("✅ **Programa Tetra-Pasta (Scavenger + Lead + Middle + Tail) Aprovado com 100% de Conformidade nos Guardrails!**")
+            else:
+                erros = []
+                if not suc_tail: erros.append(f"• **Tail Slurry:** {msg_tail}")
+                if not suc_mid: erros.append(f"• **Middle Slurry:** {msg_mid}")
+                if not suc_lead: erros.append(f"• **Lead Slurry:** {msg_lead}")
+                if not suc_scav: erros.append(f"• **Scavenger Slurry:** {msg_scav}")
+                st.error("❌ Falha no dimensionamento do Programa Tetra-Pasta:\n\n" + "\n".join(erros))
 
         else:
             # Pasta Individual Selecionada
-            tipo_alvo = "Tail Slurry (Sapata / Fundo)" if "Tail" in estrategia_ia else "Lead Slurry (Preenchimento / Topo)"
+            tipo_alvo = st.session_state.get("ia_tipo_pasta_ind", "Tail Slurry (Sapata / Fundo)")
             with st.spinner(f"Dimensionando {tipo_alvo} com {modelo_selecionado}..."):
                 dados_envio = {
                     'prof_topo': prof_topo,
@@ -387,55 +649,91 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         for k in chaves_checkboxes:
             st.session_state.pop(k, None)
 
-    # 3. EXIBIÇÃO DE PROGRAMA COMPLETO (LEAD + TAIL)
+    # 3. EXIBIÇÃO DE PROGRAMAS COMPLETOS (BI, TRI OU TETRA-PASTA)
     if "programa_completo_ia" in st.session_state:
         prog = st.session_state["programa_completo_ia"]
-        res_tail = prog["tail"]
-        res_lead = prog["lead"]
+        tipo_prog = prog.get("tipo", "bi")
+        res_tail = prog.get("tail", {})
+        res_mid = prog.get("middle", {})
+        res_lead = prog.get("lead", {})
+        res_scav = prog.get("scavenger", {})
 
         st.markdown("---")
-        st.markdown("#### 🏆 Programa Completo de Cimentação Recomendado (Lead + Tail)")
-        st.caption("Estratégia bi-pasta para isolamento de sapata e alívio da pressão anular sobre formações superiores:")
+        if tipo_prog == "tetra":
+            st.markdown("#### ⚡ Programa Tetra-Pasta Completo com Varredura (Scavenger + Lead + Middle + Tail)")
+            st.caption("Estratégia avançada de 4 estágios: varredura e limpeza anular, preenchimento leve, isolamento de reservatório e sapata estrutural.")
+            cols = st.columns(4, gap="medium")
+            col_list = [
+                (cols[0], "⚪ Pasta 4: Scavenger Slurry (Varredura)", res_scav),
+                (cols[1], "📘 Pasta 3: Lead Slurry (Preenchimento)", res_lead),
+                (cols[2], "📗 Pasta 2: Middle Slurry (Reservatório)", res_mid),
+                (cols[3], "📙 Pasta 1: Tail Slurry (Sapata)", res_tail)
+            ]
+        elif tipo_prog == "tri":
+            st.markdown("#### 🏆 Programa Tri-Pasta Avançado (Lead + Intermediária + Tail)")
+            st.caption("Estratégia de 3 estágios recomendada para poços complexos: alívio hidrostático de topo, isolamento de gás/reservatório e ancoragem de sapata.")
+            cols = st.columns(3, gap="medium")
+            col_list = [
+                (cols[0], "📘 Pasta 3: Lead Slurry (Preenchimento / Topo)", res_lead),
+                (cols[1], "📗 Pasta 2: Middle Slurry (Intermediária / Reservatório)", res_mid),
+                (cols[2], "📙 Pasta 1: Tail Slurry (Sapata / Fundo)", res_tail)
+            ]
+        else: # bi
+            st.markdown("#### 🎯 Programa Bi-Pasta Clássico (Lead + Tail)")
+            st.caption("Estratégia convencional de 2 estágios: preenchimento anular com pasta leve e vedação de sapata com pasta de alta resistência.")
+            cols = st.columns(2, gap="large")
+            col_list = [
+                (cols[0], "📘 Pasta 2: Lead Slurry (Preenchimento / Topo)", res_lead),
+                (cols[1], "📙 Pasta 1: Tail Slurry (Sapata / Fundo)", res_tail)
+            ]
 
-        col_c_lead, col_c_tail = st.columns(2, gap="large")
-
-        # Card da Lead Slurry (Pasta 2 - Topo)
-        with col_c_lead:
-            with st.container(border=True):
-                st.markdown("##### 📘 Pasta 2: Lead Slurry (Preenchimento / Topo)")
-                c_m1, c_m2, c_m3 = st.columns(3)
-                c_m1.metric("Densidade", f"{res_lead.get('densidade_alvo_ppg', 12.8):.2f} ppg")
-                c_m2.metric("Classe API", f"Classe {res_lead.get('classe_cimento', 'G')}")
-                c_m3.metric("Água Mistura", f"{res_lead.get('agua_gal_sk', 7.5):.2f} gal/sk")
-                
-                st.markdown(f"**Parecer do Especialista:**\n> *{res_lead.get('parecer_tecnico', '')}*")
-                
-                st.markdown("**Aditivos Selecionados:**")
-                for ad in res_lead.get("aditivos", []):
-                    st.markdown(f"- **{ad.get('nome')}**: `{ad.get('concentracao', 0.0):.2f}% BWOC` — *{ad.get('justificativa', '')}*")
-
-        # Card da Tail Slurry (Pasta 1 - Fundo)
-        with col_c_tail:
-            with st.container(border=True):
-                st.markdown("##### 📙 Pasta 1: Tail Slurry (Sapata / Fundo)")
-                c_t1, c_t2, c_t3 = st.columns(3)
-                c_t1.metric("Densidade", f"{res_tail.get('densidade_alvo_ppg', 16.0):.2f} ppg")
-                c_t2.metric("Classe API", f"Classe {res_tail.get('classe_cimento', 'G')}")
-                c_t3.metric("Água Mistura", f"{res_tail.get('agua_gal_sk', 5.0):.2f} gal/sk")
-                
-                st.markdown(f"**Parecer do Especialista:**\n> *{res_tail.get('parecer_tecnico', '')}*")
-                
-                st.markdown("**Aditivos Selecionados:**")
-                for ad in res_tail.get("aditivos", []):
-                    st.markdown(f"- **{ad.get('nome')}**: `{ad.get('concentracao', 0.0):.2f}% BWOC` — *{ad.get('justificativa', '')}*")
+        # Renderização dos Cards das Pastas
+        for col_card, titulo_card, dados_pasta in col_list:
+            with col_card:
+                with st.container(border=True):
+                    st.markdown(f"##### {titulo_card}")
+                    c_m1, c_m2, c_m3 = st.columns(3)
+                    c_m1.metric("Densidade", f"{dados_pasta.get('densidade_alvo_ppg', 15.0):.2f} ppg")
+                    c_m2.metric("Classe API", f"Classe {dados_pasta.get('classe_cimento', 'G')}")
+                    c_m3.metric("Água", f"{dados_pasta.get('agua_gal_sk', 5.0):.2f} gal/sk")
+                    
+                    st.markdown(f"**Parecer:**\n> *{dados_pasta.get('parecer_tecnico', '')}*")
+                    st.markdown("**Aditivos Selecionados:**")
+                    for ad in dados_pasta.get("aditivos", []):
+                        st.markdown(f"- **{ad.get('nome')}**: `{ad.get('concentracao', 0.0):.2f}% BWOC` — *{ad.get('justificativa', '')}*")
 
         # Telemetria do Trem de Deslocamento de Fluidos
+        d_tail = res_tail.get('densidade_alvo_ppg', 16.0)
+        d_mid = res_mid.get('densidade_alvo_ppg', 15.0)
+        d_lead = res_lead.get('densidade_alvo_ppg', 12.8)
+        d_scav = res_scav.get('densidade_alvo_ppg', 11.2)
+
+        if tipo_prog == "tetra":
+            fluxo_html = f"""
+            <span style="color: #cbd5e1;">Lama: <b>{dens_lama:.2f} ppg</b></span> ➔ 
+            <span style="color: #94a3b8;">Scavenger: <b>{d_scav:.2f} ppg</b> (+{d_scav - dens_lama:.2f})</span> ➔ 
+            <span style="color: #38bdf8;">Lead: <b>{d_lead:.2f} ppg</b> (+{d_lead - d_scav:.2f})</span> ➔ 
+            <span style="color: #10b981;">Middle: <b>{d_mid:.2f} ppg</b> (+{d_mid - d_lead:.2f})</span> ➔ 
+            <span style="color: #f59e0b;">Tail: <b>{d_tail:.2f} ppg</b> (+{d_tail - d_mid:.2f})</span>
+            """
+        elif tipo_prog == "tri":
+            fluxo_html = f"""
+            <span style="color: #cbd5e1;">Lama: <b>{dens_lama:.2f} ppg</b></span> ➔ 
+            <span style="color: #38bdf8;">Lead Slurry: <b>{d_lead:.2f} ppg</b> (+{d_lead - dens_lama:.2f})</span> ➔ 
+            <span style="color: #10b981;">Middle Slurry: <b>{d_mid:.2f} ppg</b> (+{d_mid - d_lead:.2f})</span> ➔ 
+            <span style="color: #f59e0b;">Tail Slurry: <b>{d_tail:.2f} ppg</b> (+{d_tail - d_mid:.2f})</span>
+            """
+        else:
+            fluxo_html = f"""
+            <span style="color: #cbd5e1;">Lama: <b>{dens_lama:.2f} ppg</b></span> ➔ 
+            <span style="color: #38bdf8;">Lead Slurry: <b>{d_lead:.2f} ppg</b> (+{d_lead - dens_lama:.2f})</span> ➔ 
+            <span style="color: #f59e0b;">Tail Slurry: <b>{d_tail:.2f} ppg</b> (+{d_tail - d_lead:.2f})</span>
+            """
+
         st.markdown(f"""
         <div style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
             <span style="color: #94a3b8; font-weight: 600; text-transform: uppercase;">Trem de Fluidos & Contraste de Deslocamento:</span>
-            <span style="color: #cbd5e1; margin-left: 10px;">Lama: <b>{dens_lama:.2f} ppg</b></span> ➔ 
-            <span style="color: #38bdf8;">Lead Slurry: <b>{res_lead.get('densidade_alvo_ppg', 12.8):.2f} ppg</b> (+{res_lead.get('densidade_alvo_ppg', 12.8) - dens_lama:.2f} ppg)</span> ➔ 
-            <span style="color: #f59e0b;">Tail Slurry: <b>{res_tail.get('densidade_alvo_ppg', 16.0):.2f} ppg</b> (+{res_tail.get('densidade_alvo_ppg', 16.0) - res_lead.get('densidade_alvo_ppg', 12.8):.2f} ppg)</span>
+            <span style="margin-left: 10px;">{fluxo_html}</span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -443,19 +741,34 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         if "msg_sucesso_prog" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso_prog"))
 
-        def _aplicar_programa_callback():
-            # Pasta 1 = Tail (Sapata), Pasta 2 = Lead (Preenchimento)
-            _aplicar_formulacao_em_pasta(1, res_tail, aditivos_db)
-            _aplicar_formulacao_em_pasta(2, res_lead, aditivos_db)
-            st.session_state["msg_sucesso_prog"] = "✨ Programa Completo Aplicado! Pasta 1 (Tail) e Pasta 2 (Lead) foram configuradas na Aba 2."
+        def _aplicar_programa_multi_callback():
+            if tipo_prog == "tetra":
+                st.session_state["num_pastas_anular"] = 4
+                _aplicar_formulacao_em_pasta(1, res_tail, aditivos_db)
+                _aplicar_formulacao_em_pasta(2, res_mid, aditivos_db)
+                _aplicar_formulacao_em_pasta(3, res_lead, aditivos_db)
+                _aplicar_formulacao_em_pasta(4, res_scav, aditivos_db)
+                st.session_state["msg_sucesso_prog"] = "✨ Programa Tetra-Pasta Aplicado! Pastas 1 (Tail), 2 (Intermediária), 3 (Lead) e 4 (Varredura) foram configuradas na Aba 4."
+            elif tipo_prog == "tri":
+                st.session_state["num_pastas_anular"] = 3
+                _aplicar_formulacao_em_pasta(1, res_tail, aditivos_db)
+                _aplicar_formulacao_em_pasta(2, res_mid, aditivos_db)
+                _aplicar_formulacao_em_pasta(3, res_lead, aditivos_db)
+                st.session_state["msg_sucesso_prog"] = "✨ Programa Tri-Pasta Aplicado! Pastas 1 (Tail), 2 (Intermediária) e 3 (Lead) foram configuradas na Aba 4."
+            else:
+                st.session_state["num_pastas_anular"] = 2
+                _aplicar_formulacao_em_pasta(1, res_tail, aditivos_db)
+                _aplicar_formulacao_em_pasta(2, res_lead, aditivos_db)
+                st.session_state["msg_sucesso_prog"] = "✨ Programa Bi-Pasta Aplicado! Pasta 1 (Tail) e Pasta 2 (Lead) foram configuradas na Aba 4."
 
         col_btn_all, _ = st.columns([2.5, 1.5])
         with col_btn_all:
+            nome_botao = f"✨ **Aplicar Programa {tipo_prog.title()}-Pasta no Simulador (Aba 4 - Configuração das Pastas)**"
             st.button(
-                "✨ **Aplicar Programa Completo no Simulador (Pasta 1 = Tail + Pasta 2 = Lead)**",
+                nome_botao,
                 type="primary",
                 use_container_width=True,
-                on_click=_aplicar_programa_callback,
+                on_click=_aplicar_programa_multi_callback,
                 key="btn_aplicar_prog_completo"
             )
 
@@ -510,14 +823,17 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         with col_ap1:
             pasta_destino = st.selectbox(
                 "Selecione a Pasta de Destino no Simulador:",
-                [f"Pasta {i}" for i in range(1, total_pastas + 1)],
+                [f"Pasta {i}" for i in range(1, 5)],
                 key="ia_select_pasta_destino"
             )
             pasta_idx = int(pasta_destino.split(" ")[1])
 
         def _aplicar_ind_callback(idx_alvo: int, recomendacao: dict, banco_aditivos: dict):
+            qtd_atual = st.session_state.get("num_pastas_anular", 1)
+            if idx_alvo > qtd_atual:
+                st.session_state["num_pastas_anular"] = idx_alvo
             _aplicar_formulacao_em_pasta(idx_alvo, recomendacao, banco_aditivos)
-            st.session_state["msg_sucesso_aplicacao"] = f"✅ Formulação transferida com sucesso para a Pasta {idx_alvo}!"
+            st.session_state["msg_sucesso_aplicacao"] = f"✅ Formulação transferida com sucesso para a Pasta {idx_alvo} na Aba 4 (Configuração das Pastas)!"
 
         with col_ap2:
             st.write("")
@@ -530,3 +846,4 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                 args=(pasta_idx, rec, aditivos_db),
                 key="btn_aplicar_formulacao_ia"
             )
+

@@ -408,119 +408,247 @@ def render_dashboard(resultados_finais: List[Dict[str, Any]], params_poco: Optio
 
     # --- JANELA DE PRESSÃO OPERACIONAL (SINCRONIZADA COM A GEOMECÂNICA DA ABA 3) ---
     with col_press_window:
-        st.markdown("#### 🛡️ Janela de Pressão Operacional (Poro × EMW × Fratura)")
-        st.caption("Perfil dinâmico da coluna hidrostática versus os limites geomecânicos da formação (Aba 3):")
+        perfil_real_df = st.session_state.get('perfil_geomecanico_ativo', None)
+        fonte_geomec = st.session_state.get('fonte_geomecanica_ativa', 'Perfil Ativo')
+
+        if perfil_real_df is not None:
+            c_pw_t, c_pw_sw = st.columns([1.6, 1.4])
+            with c_pw_t:
+                st.markdown("#### 🛡️ Janela Geomecânica")
+            with c_pw_sw:
+                usar_curvas_reais = st.toggle("🌐 Curvas Reais de Campo", value=True, key="tog_curvas_reais_dash")
+            st.caption(f"Curvas contínuas ativas do perfil: **{fonte_geomec}**" if usar_curvas_reais else "Perfil dinâmico analítico versus limites teóricos (Aba 3):")
+        else:
+            usar_curvas_reais = False
+            st.markdown("#### 🛡️ Janela de Pressão Operacional (Poro × EMW × Fratura)")
+            st.caption("Perfil dinâmico da coluna hidrostática versus os limites geomecânicos da formação (Aba 3):")
 
         # Gradientes da formação configurados no Módulo Especialista (Aba 3)
         grad_poro_alvo = float(st.session_state.get('ia_poro', 10.20))
         grad_frac_alvo = float(st.session_state.get('ia_frac', 16.80))
+        grad_poro_topo = min(grad_poro_alvo, 9.00)
+        grad_frac_topo = max(grad_frac_alvo - 1.0, 14.50)
         dens_lama = params_poco.get('dens_lama', 9.50)
 
-        # Profundidade real da coluna calculada
-        z_max = max(total_altura_ft, 1000.0)
-        depth_steps = np.linspace(0, z_max, 100)
+        if usar_curvas_reais and perfil_real_df is not None:
+            # ── MODO 1: CURVAS REAIS CONTÍNUAS DO PERFIL GEOMECÂNICO ──
+            prof_reais_ft = perfil_real_df["prof_ft"].values
+            z_max = float(np.nanmax(prof_reais_ft)) if len(prof_reais_ft) > 0 else 1000.0
 
-        # Na formação aberta do intervalo de interesse, os limites são definidos por ia_poro e ia_frac.
-        # Caso o poço seja modelado desde a superfície (0 ft até z_max), o gradiente de poro e fratura
-        # acompanham o perfil de sobrecarga normal até o reservatório.
-        # No intervalo reservatório/fundo: Poro = grad_poro_alvo e Fratura = grad_frac_alvo
-        grad_poro_topo = min(grad_poro_alvo, 9.00)
-        # O gradiente de fratura na base do revestimento anterior / topo do intervalo aberto:
-        grad_frac_topo = max(grad_frac_alvo - 1.0, 14.50)
+            frac_curve = perfil_real_df["fratura_ppg"].values
+            poro_curve = perfil_real_df["poro_ppg"].values
+            colapso_curve = perfil_real_df["colapso_ppg"].values if "colapso_ppg" in perfil_real_df.columns else None
+            sobrecarga_curve = perfil_real_df["sobrecarga_ppg"].values if "sobrecarga_ppg" in perfil_real_df.columns else None
+            lim_inf_curve = perfil_real_df["limite_inferior_ppg"].values if "limite_inferior_ppg" in perfil_real_df.columns else poro_curve
+            depth_steps = prof_reais_ft
+            lama_curve = np.full_like(depth_steps, dens_lama)
 
-        poro_curve = grad_poro_topo + (depth_steps / z_max) * (grad_poro_alvo - grad_poro_topo)
-        frac_curve = grad_frac_topo + (depth_steps / z_max) * (grad_frac_alvo - grad_frac_topo)
-        lama_curve = np.full_like(depth_steps, dens_lama)
+            # EMW da coluna de cimento superposta no intervalo de fundo do poço real
+            z_toc = max(0.0, z_max - total_altura_ft)
+            pastas_topo_base = list(reversed(resultados_finais))
 
-        # Cálculo rigoroso da Pressão Hidrostática e EMW Estratificado ao longo da coluna
-        pastas_topo_base = list(reversed(resultados_finais))
-        emw_curve = []
-        for z in depth_steps:
-            if z == 0:
-                emw_val = pastas_topo_base[0]['densidade'] if pastas_topo_base else densidade_media_ppg
+            emw_curve = []
+            for z in depth_steps:
+                if z <= 0:
+                    emw_curve.append(dens_lama)
+                elif z <= z_toc:
+                    emw_curve.append(dens_lama)
+                else:
+                    p_acum_psi = 0.052 * dens_lama * z_toc
+                    z_layer_top = z_toc
+                    for p in pastas_topo_base:
+                        h = p['altura']
+                        z_layer_bottom = z_layer_top + h
+                        if z <= z_layer_top:
+                            break
+                        dz = min(z, z_layer_bottom) - z_layer_top
+                        p_acum_psi += 0.052 * p['densidade'] * dz
+                        z_layer_top = z_layer_bottom
+                    emw_val = p_acum_psi / (0.052 * z)
+                    emw_curve.append(emw_val)
+            emw_curve = np.array(emw_curve)
+
+            # Auditoria contra limites reais
+            valid_frac = ~np.isnan(frac_curve)
+            valid_inf = ~np.isnan(lim_inf_curve)
+            diff_frac = frac_curve[valid_frac] - emw_curve[valid_frac] if valid_frac.sum() > 0 else np.array([1.0])
+            diff_poro = emw_curve[valid_inf] - lim_inf_curve[valid_inf] if valid_inf.sum() > 0 else np.array([1.0])
+
+            min_margem_frac = float(np.nanmin(diff_frac)) if len(diff_frac) else 0.0
+            min_margem_poro = float(np.nanmin(diff_poro)) if len(diff_poro) else 0.0
+
+            if min_margem_frac < 0:
+                idx_viol = np.where(frac_curve - emw_curve < 0)[0]
+                z_ini = depth_steps[idx_viol[0]]
+                z_fim = depth_steps[idx_viol[-1]]
+                badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
+                    <b>🔴 ALERTA DE FRATURA REAL:</b> EMW excede a fratura de campo entre <b>{z_ini:.0f} ft e {z_fim:.0f} ft</b> (excesso de até <b>{abs(min_margem_frac):.2f} ppg</b>).
+                    <br><span style="font-size: 0.78rem; color: #cbd5e1;">💡 <i>Ajuste operacional:</i> Reduza a densidade da pasta de topo (Lead) ou diminua a altura da coluna de cimento.</span>
+                </div>"""
+            elif min_margem_poro < 0:
+                idx_viol = np.where(emw_curve - lim_inf_curve < 0)[0]
+                z_ini = depth_steps[idx_viol[0]]
+                z_fim = depth_steps[idx_viol[-1]]
+                badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
+                    <b>🔴 ALERTA DE INSTABILIDADE/KICK:</b> EMW abaixo do limite inferior (Poro/Colapso) entre <b>{z_ini:.0f} ft e {z_fim:.0f} ft</b> (déficit de até <b>{abs(min_margem_poro):.2f} ppg</b>).
+                </div>"""
             else:
-                p_acum_psi = 0.0
-                z_layer_top = 0.0
-                for p in pastas_topo_base:
-                    h = p['altura']
-                    z_layer_bottom = z_layer_top + h
-                    if z <= z_layer_top:
-                        break
-                    dz = min(z, z_layer_bottom) - z_layer_top
-                    p_acum_psi += 0.052 * p['densidade'] * dz
-                    z_layer_top = z_layer_bottom
-                emw_val = p_acum_psi / (0.052 * z)
-            emw_curve.append(emw_val)
-        emw_curve = np.array(emw_curve)
+                badge_html = f"""<div style="background-color: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #a7f3d0; font-family: 'JetBrains Mono'; display: flex; justify-content: space-between;">
+                    <span><b>🟢 COLUNA 100% CONFORME COM PERFIL REAL</b> ({fonte_geomec})</span>
+                    <span>Margem Mín. Poro/Colapso: <b>+{min_margem_poro:.2f} ppg</b> │ Fratura: <b>+{min_margem_frac:.2f} ppg</b></span>
+                </div>"""
+            st.html(badge_html)
 
-        # Auditoria Rigorosa de Toda a Coluna (Detecção de Violações Ponto a Ponto)
-        diff_frac = frac_curve - emw_curve
-        diff_poro = emw_curve - poro_curve
-        min_margem_frac = float(np.min(diff_frac))
-        min_margem_poro = float(np.min(diff_poro))
+            fig_window = go.Figure()
 
-        if min_margem_frac < 0:
-            # Identifica o intervalo onde o cimento quebra a formação
-            idx_viol_frac = np.where(diff_frac < 0)[0]
-            z_ini_frac = depth_steps[idx_viol_frac[0]]
-            z_fim_frac = depth_steps[idx_viol_frac[-1]]
-            badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
-                <b>🔴 ALERTA DE FRATURA:</b> EMW excede a fratura entre <b>{z_ini_frac:.0f} ft e {z_fim_frac:.0f} ft</b> (excesso de até <b>{abs(min_margem_frac):.2f} ppg</b>).
-                <br><span style="font-size: 0.78rem; color: #cbd5e1;">💡 <i>Solução:</i> Utilize uma pasta de preenchimento mais leve (<b>Lead Slurry</b>) na seção superior.</span>
-            </div>"""
-        elif min_margem_poro < 0:
-            # Identifica o intervalo onde a coluna fica subbalanceada (Kick)
-            idx_viol_poro = np.where(diff_poro < 0)[0]
-            z_ini_poro = depth_steps[idx_viol_poro[0]]
-            z_fim_poro = depth_steps[idx_viol_poro[-1]]
-            badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
-                <b>🔴 ALERTA DE KICK:</b> Coluna subbalanceada entre <b>{z_ini_poro:.0f} ft e {z_fim_poro:.0f} ft</b> (déficit de até <b>{abs(min_margem_poro):.2f} ppg</b> abaixo do poro).
-            </div>"""
+            # Curva de Sobrecarga (se houver)
+            if sobrecarga_curve is not None and not np.all(np.isnan(sobrecarga_curve)):
+                fig_window.add_trace(go.Scatter(
+                    x=sobrecarga_curve, y=depth_steps, mode='lines',
+                    line=dict(color='#a855f7', width=1.5, dash='dot'),
+                    name='Sobrecarga (Govb)'
+                ))
+
+            # Curva de Fratura Real
+            fig_window.add_trace(go.Scatter(
+                x=frac_curve, y=depth_steps, mode='lines',
+                line=dict(color='#ef4444', width=2.5),
+                name='Fratura Real (Gf)'
+            ))
+
+            # Curva de Poro Real
+            fig_window.add_trace(go.Scatter(
+                x=poro_curve, y=depth_steps, mode='lines',
+                line=dict(color='#f59e0b', width=2, dash='dash'),
+                name='Poro Real (Gp)'
+            ))
+
+            # Curva de Colapso Real (se houver)
+            if colapso_curve is not None and not np.all(np.isnan(colapso_curve)):
+                fig_window.add_trace(go.Scatter(
+                    x=colapso_curve, y=depth_steps, mode='lines',
+                    line=dict(color='#ec4899', width=1.8, dash='dashdot'),
+                    name='Colapso Real (Gc)'
+                ))
+
+            # Preenchimento do Corredor Seguro Real
+            if lim_inf_curve is not None and not np.all(np.isnan(lim_inf_curve)):
+                fig_window.add_trace(go.Scatter(
+                    x=lim_inf_curve, y=depth_steps, mode='lines',
+                    line=dict(color='rgba(16, 185, 129, 0.4)', width=1),
+                    showlegend=False, hoverinfo="skip"
+                ))
+                fig_window.add_trace(go.Scatter(
+                    x=frac_curve, y=depth_steps, mode='lines',
+                    fill='tonexty', fillcolor='rgba(16, 185, 129, 0.08)',
+                    line=dict(color='rgba(16, 185, 129, 0.4)', width=1),
+                    name='Janela Segura Real'
+                ))
+
+            # Linha da Lama de Perfuração
+            fig_window.add_trace(go.Scatter(
+                x=lama_curve, y=depth_steps, mode='lines',
+                line=dict(color='#94a3b8', width=1.5, dash='dot'),
+                name=f'Lama ({dens_lama:.1f} ppg)'
+            ))
+
+            # Curva EMW Real da Coluna de Cimento
+            fig_window.add_trace(go.Scatter(
+                x=emw_curve, y=depth_steps, mode='lines+markers',
+                line=dict(color='#38bdf8', width=3.5),
+                marker=dict(size=4),
+                name=f'EMW Coluna ({emw_curve[0]:.2f} ➔ {emw_curve[-1]:.2f} ppg)'
+            ))
+
         else:
-            badge_html = f"""<div style="background-color: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #a7f3d0; font-family: 'JetBrains Mono'; display: flex; justify-content: space-between;">
-                <span><b>🟢 COLUNA 100% CONFORME</b> (Janela Segura)</span>
-                <span>Margem Mín. Poro: <b>+{min_margem_poro:.2f} ppg</b> │ Fratura: <b>+{min_margem_frac:.2f} ppg</b></span>
-            </div>"""
-        
-        st.html(badge_html)
+            # ── MODO 2: GRADIENTE ANALÍTICO LINEAR TEÓRICO (MODO ORIGINAL) ──
+            z_max = max(total_altura_ft, 1000.0)
+            depth_steps = np.linspace(0, z_max, 100)
+            grad_poro_topo = min(grad_poro_alvo, 9.00)
+            grad_frac_topo = max(grad_frac_alvo - 1.0, 14.50)
 
-        fig_window = go.Figure()
+            poro_curve = grad_poro_topo + (depth_steps / z_max) * (grad_poro_alvo - grad_poro_topo)
+            frac_curve = grad_frac_topo + (depth_steps / z_max) * (grad_frac_alvo - grad_frac_topo)
+            lama_curve = np.full_like(depth_steps, dens_lama)
 
-        # Linha de Fratura (Limite Máximo)
-        fig_window.add_trace(go.Scatter(
-            x=frac_curve,
-            y=depth_steps,
-            mode='lines',
-            line=dict(color='#ef4444', width=2, dash='dash'),
-            name=f'Fratura ({grad_frac_alvo:.1f} ppg no Fundo)'
-        ))
-        # Linha de Poro (Limite Mínimo) + Preenchimento do Corredor Seguro
-        fig_window.add_trace(go.Scatter(
-            x=poro_curve,
-            y=depth_steps,
-            mode='lines',
-            line=dict(color='#f59e0b', width=2, dash='dash'),
-            fill='tonexty',
-            fillcolor='rgba(16, 185, 129, 0.08)',
-            name=f'Poro ({grad_poro_alvo:.1f} ppg no Fundo)'
-        ))
-        # Linha da Lama de Perfuração
-        fig_window.add_trace(go.Scatter(
-            x=lama_curve,
-            y=depth_steps,
-            mode='lines',
-            line=dict(color='#94a3b8', width=1.5, dash='dot'),
-            name=f'Lama ({dens_lama:.1f} ppg)'
-        ))
-        # Curva de EMW Real da Coluna de Cimento
-        fig_window.add_trace(go.Scatter(
-            x=emw_curve,
-            y=depth_steps,
-            mode='lines+markers',
-            line=dict(color='#38bdf8', width=3.5),
-            marker=dict(size=4),
-            name=f'EMW Cimento ({emw_curve[0]:.2f} ➔ {emw_curve[-1]:.2f} ppg)'
-        ))
+            pastas_topo_base = list(reversed(resultados_finais))
+            emw_curve = []
+            for z in depth_steps:
+                if z == 0:
+                    emw_val = pastas_topo_base[0]['densidade'] if pastas_topo_base else densidade_media_ppg
+                else:
+                    p_acum_psi = 0.0
+                    z_layer_top = 0.0
+                    for p in pastas_topo_base:
+                        h = p['altura']
+                        z_layer_bottom = z_layer_top + h
+                        if z <= z_layer_top:
+                            break
+                        dz = min(z, z_layer_bottom) - z_layer_top
+                        p_acum_psi += 0.052 * p['densidade'] * dz
+                        z_layer_top = z_layer_bottom
+                    emw_val = p_acum_psi / (0.052 * z)
+                emw_curve.append(emw_val)
+            emw_curve = np.array(emw_curve)
+
+            diff_frac = frac_curve - emw_curve
+            diff_poro = emw_curve - poro_curve
+            min_margem_frac = float(np.min(diff_frac))
+            min_margem_poro = float(np.min(diff_poro))
+
+            if min_margem_frac < 0:
+                idx_viol_frac = np.where(diff_frac < 0)[0]
+                z_ini_frac = depth_steps[idx_viol_frac[0]]
+                z_fim_frac = depth_steps[idx_viol_frac[-1]]
+                badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
+                    <b>🔴 ALERTA DE FRATURA:</b> EMW excede a fratura entre <b>{z_ini_frac:.0f} ft e {z_fim_frac:.0f} ft</b> (excesso de até <b>{abs(min_margem_frac):.2f} ppg</b>).
+                    <br><span style="font-size: 0.78rem; color: #cbd5e1;">💡 <i>Solução:</i> Utilize uma pasta de preenchimento mais leve (<b>Lead Slurry</b>) na seção superior.</span>
+                </div>"""
+            elif min_margem_poro < 0:
+                idx_viol_poro = np.where(diff_poro < 0)[0]
+                z_ini_poro = depth_steps[idx_viol_poro[0]]
+                z_fim_poro = depth_steps[idx_viol_poro[-1]]
+                badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
+                    <b>🔴 ALERTA DE KICK:</b> Coluna subbalanceada entre <b>{z_ini_poro:.0f} ft e {z_fim_poro:.0f} ft</b> (déficit de até <b>{abs(min_margem_poro):.2f} ppg</b> abaixo do poro).
+                </div>"""
+            else:
+                badge_html = f"""<div style="background-color: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #a7f3d0; font-family: 'JetBrains Mono'; display: flex; justify-content: space-between;">
+                    <span><b>🟢 COLUNA 100% CONFORME</b> (Janela Segura)</span>
+                    <span>Margem Mín. Poro: <b>+{min_margem_poro:.2f} ppg</b> │ Fratura: <b>+{min_margem_frac:.2f} ppg</b></span>
+                </div>"""
+            
+            st.html(badge_html)
+
+            fig_window = go.Figure()
+            fig_window.add_trace(go.Scatter(
+                x=frac_curve, y=depth_steps, mode='lines',
+                line=dict(color='#ef4444', width=2, dash='dash'),
+                name=f'Fratura ({grad_frac_alvo:.1f} ppg no Fundo)'
+            ))
+            fig_window.add_trace(go.Scatter(
+                x=poro_curve, y=depth_steps, mode='lines',
+                line=dict(color='#f59e0b', width=2, dash='dash'),
+                fill='tonexty', fillcolor='rgba(16, 185, 129, 0.08)',
+                name=f'Poro ({grad_poro_alvo:.1f} ppg no Fundo)'
+            ))
+            fig_window.add_trace(go.Scatter(
+                x=lama_curve, y=depth_steps, mode='lines',
+                line=dict(color='#94a3b8', width=1.5, dash='dot'),
+                name=f'Lama ({dens_lama:.1f} ppg)'
+            ))
+            fig_window.add_trace(go.Scatter(
+                x=emw_curve, y=depth_steps, mode='lines+markers',
+                line=dict(color='#38bdf8', width=3.5),
+                marker=dict(size=4),
+                name=f'EMW Cimento ({emw_curve[0]:.2f} ➔ {emw_curve[-1]:.2f} ppg)'
+            ))
+
+        if usar_curvas_reais and perfil_real_df is not None:
+            min_x_val = min(7.5, float(np.nanmin(poro_curve)) - 0.5) if len(poro_curve) > 0 and not np.all(np.isnan(poro_curve)) else 7.5
+            max_x_val = max(19.5, float(np.nanmax(frac_curve)) + 0.5) if len(frac_curve) > 0 and not np.all(np.isnan(frac_curve)) else 19.5
+        else:
+            min_x_val = min(8.0, grad_poro_topo - 0.5)
+            max_x_val = max(19.0, grad_frac_alvo + 1.0)
 
         fig_window.update_layout(
             height=440,
@@ -538,7 +666,7 @@ def render_dashboard(resultados_finais: List[Dict[str, Any]], params_poco: Optio
                 tickfont=dict(size=12, family="JetBrains Mono", color="#cbd5e1"),
                 gridcolor="#1e293b",
                 zerolinecolor="#334155",
-                range=[min(8.0, grad_poro_topo - 0.5), max(19.0, grad_frac_alvo + 1.0)]
+                range=[min_x_val, max_x_val]
             ),
             legend=dict(
                 orientation="h",
