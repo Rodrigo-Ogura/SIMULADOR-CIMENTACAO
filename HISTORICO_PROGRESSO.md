@@ -105,7 +105,7 @@ Documento de registro contínuo de evolução, alterações de código, testes e
      - Teste unitário de execução do pipeline completo (geomecânica -> geometria -> IA -> pastas -> hidráulica -> dashboard) sem regressões.
 
 ### [Sessão 11] - Arquitetura Multi-Pasta (Bi, Tri e Tetra-Pastas) & Guardrails Estritos Anti-Alucinação
-- **Data/Hora:** 2026-09-24 09:20
+- **Data/Hora:** 2026-09-24 09:34 (Sessão Encerrada com Sucesso)
 - **Principais Entregas e Engenharia de Prompt & Guardrails:**
   1. **Expansão Arquitetural Multi-Pasta (Aba 3 & Aba 4):**
      - Atendimento à diretriz acadêmica e de campo (Poli-USP): suporte completo a programas de **Bi-pasta** (Lead + Tail), **Tri-pasta** (Lead + Middle/Reservatório + Tail), **Tetra-pasta** (Scavenger/Varredura + Lead + Middle + Tail) e **Pastas Individuais Customizadas** (1 a 4).
@@ -148,6 +148,6 @@ Documento de registro contínuo de evolução, alterações de código, testes e
 2. **Deploy Contínuo no Streamlit Cloud:**
    - Realizar o commit e push para o repositório remoto para publicação online em `simulador-cimentacao-usp.streamlit.app`.
 3. **Exportação de Relatórios de Engenharia (PDF/Excel):**
-   - Implementação do motor de relatórios especificado em [`plano_exportacao_relatorio.md`](./plano_exportacao_relatorio.md).
+   - Implementação do motor de relatórios especificado em [`docs/plano_exportacao_relatorio.md`](./docs/plano_exportacao_relatorio.md).
 
 
