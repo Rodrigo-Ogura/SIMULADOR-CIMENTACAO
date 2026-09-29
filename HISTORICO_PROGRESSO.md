@@ -135,19 +135,90 @@ Documento de registro contínuo de evolução, alterações de código, testes e
 
 ---
 
+### [Sessão 12] - Motor Determinístico API Spec 10A & Otimização de Prompts (~85% Menos Tokens)
+- **Data/Hora:** 2026-09-29 10:20
+- **Principais Entregas e Inovações Arquiteturais:**
+  1. **Motor Determinístico de Engenharia (`gerar_formulacao_deterministica` em `src/services/requisitos_ia.py`):**
+     - Criação do motor puro em Python que dimensiona formulações completas em **0.001 segundos**, 100% offline, com **zero consumo de tokens** e sem necessidade de conexão ou chaves de API.
+     - Lógica baseada estritamente nas normas **API Spec 10A / RP 10B**, **Bourgoyne et al. (Cap. 3)** e **Nelson & Guillot**.
+     - Suporte nativo a todos os tipos de pasta: Tail (sapata), Middle (reservatório/gás), Lead (preenchimento leve) e Scavenger (varredura).
+     - **Aviso explícito de confiabilidade:** O sistema informa claramente na UI e nos pareceres que a modalidade determinística fornece justificativas normativas diretas para cada aditivo, mas **não contém pareceres discursivos em texto livre ou redação livre gerados por IA**.
+  2. **Filtro Inteligente de Catálogo de Aditivos (`filtrar_aditivos_relevantes`):**
+     - Em vez de enviar o banco inteiro de 25 aditivos para a LLM, o pré-processador seleciona em Python apenas os 4 a 6 aditivos tecnicamente viáveis para as condições térmicas e mecânicas daquele poço.
+  3. **Otimização Drástica de Tokens nos Prompts (~85% de redução):**
+     - Compactação do prompt de sistema e eliminação de 4 blocos extensos de few-shot duplicados em `groq_agent_service.py` e `ollama_agent_service.py`.
+     - O consumo total por requisição caiu de **~2.200 tokens para ~350 a 450 tokens**, resolvendo de forma definitiva o problema de estouro de cota e limite de 1k de tokens na API gratuita da Groq.
+  4. **Correção de Categoria e Normalização da Flor de Sílica:**
+     - Correção da categoria de `Flor de Sílica (SSA-1)` e `Areia de Sílica (Ottawa)` para `"Estabilizador Térmico"` em `data/aditivos_db.json` e `config.py`.
+     - Suporte transparente a ambos os campos `"concentracao"` e `"concentracao_bwoc_pct"` em `normalizar_recomendacao` e `validar_recomendacao`.
+  5. **Interface Unificada na Aba 3 (`src/ui/tab_agente_ia.py`):**
+     - Seletor do motor de cálculo expandido com 3 opções claras:
+       - `⚡ Motor Determinístico API Spec 10A (Instantâneo / Sem IA)`
+       - `☁️ Groq Cloud LPU (Nuvem - Rápido com IA)`
+       - `🖥️ Ollama Engine (Local - Offline com IA)`
+     - Card de telemetria e avisos de modalidade contextualizados.
+  6. **Auditoria Geral e Bateria de Testes Automatizados (`tests/test_audit.py`):**
+     - Criação da suíte completa de auditoria cobrindo os 5 módulos de serviços, persistência JSON, geomecânica e modelos.
+     - **Bugs identificados e prontamente corrigidos durante o checkup:**
+       1. *Nome do aditivo LCM:* Corrigido de `"Celofane Flakes"` (inexistente no banco) para `"Agente de Perda de Circulação (Tuf-Plug)"`.
+       2. *Janela de densidade em Middle Slurry:* Corrigido o cálculo de densidade alvo para respeitar estritamente a janela `[densidade_min_alvo, densidade_max_alvo]`.
+       3. *Alias de métricas geomecânicas:* Adicionado o alias `"gargalo_min_ppg"` em `GeomecanicaService.extrair_metricas_resumo` para evitar inconsistências de nomenclatura.
+       4. *Conciliação de campos de dosagem:* `validar_recomendacao` agora aceita tanto `concentracao` quanto `concentracao_bwoc_pct`.
+     - **Resultado dos Testes:** 27 de 27 testes unitários e de integração passaram com 100% de sucesso.
+     - **Teste Headless do Streamlit:** Aplicação inicializada com sucesso em modo headless, respondendo com HTTP 200 e zero conflitos de widgets ou sessão.
+
+---
+
+### [Sessão 13] - Correção de Sincronização Geomecânica & Salvaguarda Hidrostática (Rayleigh-Taylor)
+- **Data/Hora:** 2026-09-29 10:45
+- **Diagnóstico do Bug Informado pelo Usuário:**
+  - *Sintoma:* Erro em banner vermelho: `❌ Falha de consistência hidrostática entre as pastas: • Inversão de empuxo: A Tail Slurry (10.43 ppg) deve ser mais densa que a Lead Slurry (12.40 ppg).`
+  - *Causa Raiz:* Ao clicar no botão `🪄 Sincronizar com Perfil da Aba 1`, o método `extrair_metricas_resumo()` extraía `fratura_min_ppg = 10.93 ppg` de todo o poço 15/9-13 (B), que é o gradiente raso na seção de condutor/superfície a 340 metros. O botão então atribuía `ia_dmax = fratura_min - 0.5 = 10.43 ppg` e `ia_dmin = poro + 0.5 = 9.78 ppg`.
+  - Ao executar o dimensionamento Bi-Pasta, a Tail Slurry ficava restrita a $\le 10.43\text{ ppg}$, enquanto a Lead Slurry de topo era calculada normativamente em $12.40\text{ ppg}$.
+  - O guardrail determinístico `validar_hierarquia_programa()` interceptou com perfeição a inversão de empuxo ($10.43\text{ ppg} < 12.40\text{ ppg}$), impedindo uma formulação fisicamente errônea de ser aprovada.
+- **Correções Implementadas:**
+  1. **Separação de Gradientes em [`src/services/geomecanica_service.py`](./src/services/geomecanica_service.py):**
+     - Adicionados os campos `fratura_base_ppg` e `poro_base_ppg` calculados nos últimos 300 metros do poço (seção de sapata / fundo / TD). Para o poço 15/9-13 (B), a fratura na base é de **16.12 ppg** (e não 10.93 ppg).
+  2. **Ajuste na Sincronização da Aba 3 ([`src/ui/tab_agente_ia.py`](./src/ui/tab_agente_ia.py)):**
+     - Sincronização atualizada para utilizar `fratura_base_ppg` ($16.12\text{ ppg}$) na sapata e dimensionar a Tail Slurry conforme as normas API RP 10B e Bourgoyne et al. (Cap. 3):
+       $$\text{dmin}_{\text{tail}} = \max(15.60, \rho_{\text{lama}} + 1.0, P_{\text{poro}} + 1.0)$$
+       $$\text{dmax}_{\text{tail}} = \max(\text{dmin} + 0.40, \min(16.50, FG_{\text{base}} - 0.5))$$
+     - Resultando em `ia_dmin = 15.60 ppg` e `ia_dmax = 16.20 ppg` para a Tail.
+  3. **Salvaguarda Preventiva contra Inversão:**
+     - Adicionada verificação preventiva nos fluxos Bi-Pasta, Tri-Pasta e Tetra-Pasta: se o usuário deixar ou digitar valores de Tail inferiores a $13.5\text{ ppg}$ ou menores que a lama, o sistema ajusta automaticamente para o patamar seguro de sapata ($\ge 15.60\text{ ppg}$), eliminando qualquer risco de erro residual de inversão.
+  4. **Auditoria Automatizada Expandida ([`tests/test_audit.py`](./tests/test_audit.py)):**
+     - Adicionado teste específico de extração de métricas de base em todos os 15 presets ($FG_{base} > 14.0\text{ ppg}$).
+     - Adicionado teste de dimensionamento de Programa Bi-Pasta sincronizado com o poço 15/9-13 (B), confirmando aprovação sem erros com $\text{Tail} = 15.62\text{ ppg} > \text{Lead} = 12.00\text{ ppg} > \text{Lama} = 10.85\text{ ppg}$.
+     - **28 de 28 testes passaram com 100% de sucesso**. Compilação limpa em todos os módulos.
+
+    5. **Visualização em Tela Cheia e Refinamento de Controles no Dashboard ([`src/ui/dashboard.py`](./src/ui/dashboard.py)):
+      - Criação do modal interativo de alta resolução via `@st.dialog("🛡️ Janela Geomecânica & Curvas de Pressão em Tela Cheia", width="large")` acionado pelo botão **`⛶ Tela Cheia`** no topo do gráfico.
+      - Criação de modal equivalente para o **Esquemático 2D do Poço** (`@st.dialog`).
+      - Ativação das ferramentas de inspeção do Plotly (`PLOTLY_CONFIG_INTERATIVO` com `displayModeBar=True`), permitindo zoom por caixa, pan, comparação de coordenadas e download de imagem em PNG 300 DPI em ambos os gráficos e no gráfico de componentes.
+      - **Refatoração Visual e Alinhamento Simétrico dos Controles:** Eliminação do empilhamento vertical do seletor `st.segmented_control` e layout simétrico de 2 linhas com CSS anti-quebra.
+
+   6. **Curva em Escada da Densidade dos Fluidos (*Slurry Weight Staircase*) & Refino Geomecânico Industrial ([`src/ui/dashboard.py`](./src/ui/dashboard.py)):**
+      - Substituição da reta contínua simplificada por um **perfil em degraus ortogonais (*step-plot*)** via `_gerar_perfil_escada_fluidos()`, exibindo a densidade exata de cada fluido no anular:
+        - $0 	o 	ext{TOC}$: Lama de perfuração ($ho_{	ext{lama}}$).
+        - $	ext{TOC} 	o 	ext{Sapata}$: Pastas de cimento em patamares sucessivos (Lead $	o$ Tail).
+      - **Diferenciação Semântica Dupla:** A curva em escada (`🪜 Peso dos Fluidos`) convive harmoniosamente com o gradiente integrado (`🌊 EMW Acumulado`), permitindo análise física completa da coluna.
+      - **Refino Físico do Modo Analítico:** Eliminação da "reta diagonal rígida que atravessava o gráfico". O poço agora assume profundidade total geológica realista com curvatura suave de compactação de bacia sedimentar e lama da superfície até o TOC.
+      - **Anotações Geotécnicas Automáticas:** Linhas horizontais discretas demarcando as cotas de **TOC** e **Sapata**.
+
+---
+
 ## 🎯 Estado Atual do Projeto
 
-- **Status Geral:** ✅ Simulador 100% atualizado, operando com arquitetura multi-pasta (1 a 4 pastas: Tail, Intermediária, Lead e Scavenger), blindagem determinística contra alucinações de LLM e pipeline linear integrado de 5 abas.
+- **Status Geral:** ✅ Inversão de empuxo corrigida, novos modais de tela cheia e barra de ferramentas interativas ativados no Dashboard (Aba 5). 28 de 28 testes automatizados aprovados.
 
 ---
 
 ## 🚀 Próximos Passos Sugeridos / Backlog
 
-1. **Validação Visual do Usuário no Servidor Local:**
-   - Conferir a navegação entre as 5 abas no `localhost:8501`.
-2. **Deploy Contínuo no Streamlit Cloud:**
-   - Realizar o commit e push para o repositório remoto para publicação online em `simulador-cimentacao-usp.streamlit.app`.
-3. **Exportação de Relatórios de Engenharia (PDF/Excel):**
-   - Implementação do motor de relatórios especificado em [`docs/plano_exportacao_relatorio.md`](./docs/plano_exportacao_relatorio.md).
+1. **Validação Visual no Navegador Local (`streamlit run app.py`):**
+   - Na Aba 5 (Dashboard), clicar no botão **`⛶ Tela Cheia`** acima da Janela Geomecânica e verificar a expansão do modal em alta resolução.
+   - Testar o zoom, pan e download de imagem da janela geomecânica e do esquemático 2D.
+2. **Deploy e Commit no GitHub:**
+   - Efetuar commit e push das alterações para o repositório oficial e atualização no Streamlit Cloud.
 
 

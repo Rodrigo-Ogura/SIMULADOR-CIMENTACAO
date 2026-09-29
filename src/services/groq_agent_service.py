@@ -15,6 +15,7 @@ from config import GROQ_API_KEY, GROQ_DEFAULT_MODEL, GROQ_MODELS, GROQ_TEMPERATU
 from src.services.requisitos_ia import (
     construir_pedido_correcao,
     derivar_requisitos,
+    filtrar_aditivos_relevantes,
     normalizar_recomendacao,
     resumo_requisitos,
     validar_dados_poco,
@@ -106,146 +107,55 @@ def verificar_status_groq(api_key: Optional[str] = None) -> Tuple[bool, List[str
         return False, GROQ_MODELS, f"Falha de conexão com Groq API: {msg}"
 
 
-def _construir_prompt_sistema(catalogo_aditivos: Dict[str, Any]) -> str:
+def _construir_prompt_sistema(catalogo_aditivos_filtrado: Dict[str, Any]) -> str:
     linhas_catalogo = []
-    for nome, dados in catalogo_aditivos.items():
+    for nome, dados in catalogo_aditivos_filtrado.items():
         cat = dados.get("categoria", "Geral")
-        tipo = dados.get("tipo", "solido")
-        dens = dados.get("densidade", 1.0)
         dose = dados.get("dosagem_tipica", "Conforme projeto")
-        ind = dados.get("indicacao", "")
-        faixas_temp = []
-        if "bhct_min_c" in dados:
-            faixas_temp.append(f"BHCT {dados['bhct_min_c']:.0f} a {dados.get('bhct_max_c', 140):.0f}°C")
-        elif "bhct_max_c" in dados:
-            faixas_temp.append(f"BHCT < {dados['bhct_max_c']:.0f}°C")
-        if "bhst_min_c" in dados:
-            faixas_temp.append(f"BHST > {dados['bhst_min_c']:.0f}°C")
-        temp_str = f" | {', '.join(faixas_temp)}" if faixas_temp else ""
-        linhas_catalogo.append(f"- {nome} [Cat: {cat} | Tipo: {tipo} | d={dens:.2f} | Dosagem usual: {dose}{temp_str}] -> {ind}")
+        linhas_catalogo.append(f"- {nome} ({cat}): usual {dose}")
 
     catalogo_formatado = "\n".join(linhas_catalogo)
 
-    return f"""Você é um Engenheiro de Cimentação Sênior, especializado em API Spec 10A / API RP 10B, Bourgoyne et al. (Cap. 3), Nelson & Guillot e Manuais da Indústria (Halliburton/Schlumberger).
+    return f"""Você é um Engenheiro de Cimentação Sênior (API Spec 10A / API RP 10B e Bourgoyne et al. Cap. 3).
+Projete uma formulação técnica para a pasta solicitada, respeitando a janela geomecânica e os requisitos operacionais.
 
-Você deve gerar uma formulação tecnicamente rigorosa e consistente. Siga estritamente as heurísticas de engenharia da indústria para seleção de aditivos:
-
---- HEURÍSTICAS DE DECISÃO E SELEÇÃO TÉCNICA ---
-1. RETARDADOR:
-   - Se BHCT entre 50 °C e 75 °C: Selecione preferencialmente 'Retardador HR-4' (dosagem típica 0.20% a 0.40% BWOC).
-   - Se BHCT acima de 75 °C: Selecione preferencialmente 'Retardador HR-12' (dosagem típica 0.40% a 0.80% BWOC).
-2. ESTABILIZADOR TÉRMICO (BHST > 110 °C):
-   - Adicione obrigatoriamente exatamente 35.0% BWOC de 'Flor de Sílica (SSA-1)' contra a regressão de resistência à compressão (strength retrogression).
-3. CONTROLE DE FILTRADO (Permeabilidade ou Risco de Gás):
-   - Selecione 'Controlador de Filtrado HALDAD-9' ou 'Controlador de Filtrado HALDAD-14' (dosagem 0.30% a 0.60% BWOC).
-4. ACELERADOR DE PEGA (BHCT < 25 °C):
-   - Selecione 'Cloreto de Cálcio (Flocos)' ou 'Cloreto de Cálcio (Salmoura)' (dosagem 1.50% a 2.00% BWOC).
-5. DENSIDADE E REOLOGIA:
-   - Se densidade < 15.0 ppg: Use 'Bentonita (Gel)' (1.5% a 3.0% BWOC).
-   - Se densidade > 16.2 ppg: Use 'Barita' (15% a 35% BWOC).
-   - Se reologia crítica ou alta perda de carga: Use 'Dispersante CFR-2' ou 'Dispersante CFR-1' (0.25% a 0.40% BWOC).
-6. LAMA DE PERFURAÇÃO & EFICIÊNCIA DE DESLOCAMENTO (Bourgoyne et al. Cap. 3 / Nelson & Guillot Cap. 10):
-   - A lama de perfuração deve manter overbalance seguro sobre a pressão de poros (+0.30 a +0.80 ppg).
-   - Para evitar canalização e instabilidade de Rayleigh-Taylor, a densidade da pasta de cimento deve superar a densidade da lama (densidade_lama < densidade_lead <= densidade_tail).
-   - Indique sempre a `densidade_lama_recomendada_ppg` avaliando a janela geomecânica.
-7. PASTA INTERMEDIÁRIA (MIDDLE / RESERVATÓRIO / GÁS):
-   - Densidade intermediária entre Lead e Tail (ex: 14.5 a 15.6 ppg).
-   - Uso mandatório de 'Controlador de Filtrado HALDAD-9' ou 'HALDAD-14' (0.3% a 0.6% BWOC) para isolamento de gás e integridade de reservatório.
-   - Retardador conforme o BHCT da seção produtora.
-8. PASTA DE VARREDURA (SCAVENGER SLURRY):
-   - Ultraleve (10.5 a 12.0 ppg).
-   - Altamente dispersa com 'Dispersante CFR-2' ou 'CFR-1' (0.30% a 0.60% BWOC) para lavagem mecânica e carreamento de reboco.
-   - 'Bentonita (Gel)' (2.0% a 3.5% BWOC) para controle de água livre.
-
---- CATÁLOGO FECHADO DE ADITIVOS HOMOLOGADOS ---
+CATÁLOGO HOMOLOGADO PARA ESTE CENÁRIO (use APENAS estes aditivos):
 {catalogo_formatado}
 
---- EXEMPLOS CANÔNICOS DE REFERÊNCIA (FEW-SHOT) ---
-Exemplo 1 (Poço Frio / Superfície: BHCT 18°C, BHST 35°C, densidade 12.8 ppg, lama 9.2 ppg):
-{{
-  "pasta_nome": "Lead Slurry (Superfície)",
-  "classe_cimento": "G",
-  "densidade_alvo_ppg": 12.8,
-  "densidade_lama_recomendada_ppg": 9.2,
-  "agua_gal_sk": 7.5,
-  "aditivos": [
-    {{"nome": "Bentonita (Gel)", "concentracao_bwoc_pct": 3.0, "justificativa": "Extensor para atingir baixa densidade e estabilizar água livre em seção rasa."}},
-    {{"nome": "Cloreto de Cálcio (Flocos)", "concentracao_bwoc_pct": 2.0, "justificativa": "Acelerador para ganho de resistência rápida em temperatura fria (BHCT 18°C)."}}
-  ],
-  "parecer_tecnico": "Pasta leve com pega acelerada para ancoragem de sapata de superfície e deslocamento eficiente sobre lama de 9.2 ppg."
-}}
+DIRETRIZES TÉCNICAS:
+1. Respeite as dosagens usuais e os limites API (% BWOC).
+2. Densidade: mantenha overbalance sobre a lama e margem segura abaixo da fratura (densidade_lama < densidade_pasta < grad_fratura).
+3. Campo `concentracao_bwoc_pct` deve ser numérico (ex: 35.0 para 35%, 0.40 para 0.40%).
 
-Exemplo 2 (Poço Profundo HPHT: BHCT 85°C, BHST 125°C, densidade 16.5 ppg, lama 10.8 ppg, reologia crítica):
+FORMATO DE RESPOSTA OBRIGATÓRIO (apenas JSON válido):
 {{
-  "pasta_nome": "Tail Slurry (Sapata)",
+  "pasta_nome": "Nome da Pasta",
   "classe_cimento": "G",
-  "densidade_alvo_ppg": 16.5,
-  "densidade_lama_recomendada_ppg": 10.8,
+  "densidade_alvo_ppg": 15.8,
+  "densidade_lama_recomendada_ppg": 9.5,
   "agua_gal_sk": 5.0,
   "aditivos": [
-    {{"nome": "Flor de Sílica (SSA-1)", "concentracao_bwoc_pct": 35.0, "justificativa": "35% BWOC para prevenção mandatória de regressão de resistência sob BHST 125°C."}},
-    {{"nome": "Retardador HR-12", "concentracao_bwoc_pct": 0.50, "justificativa": "Retardador de alta performance para garantir tempo de espessamento em BHCT de 85°C."}},
-    {{"nome": "Dispersante CFR-2", "concentracao_bwoc_pct": 0.35, "justificativa": "Otimiza a reologia e minimiza perdas de carga anulares durante o bombeio."}},
-    {{"nome": "Barita", "concentracao_bwoc_pct": 20.0, "justificativa": "Densificante para atingir a densidade alvo de 16.5 ppg."}}
+    {{"nome": "Nome Exato do Aditivo", "concentracao_bwoc_pct": 0.40, "justificativa": "Razão técnica concisa"}}
   ],
-  "parecer_tecnico": "Pasta densificada e termoestável para isolamento de zona HPHT com overbalance garantido."
-}}
-
-Exemplo 3 (Pasta Intermediária / Reservatório & Gás: BHCT 65°C, densidade 15.2 ppg, lama 10.2 ppg):
-{{
-  "pasta_nome": "Middle Slurry (Reservatório / Gás)",
-  "classe_cimento": "G",
-  "densidade_alvo_ppg": 15.2,
-  "densidade_lama_recomendada_ppg": 10.2,
-  "agua_gal_sk": 5.2,
-  "aditivos": [
-    {{"nome": "Controlador de Filtrado HALDAD-9", "concentracao_bwoc_pct": 0.45, "justificativa": "Controle rigoroso de filtrado API (<50 mL) e bloqueio contra migração de gás."}},
-    {{"nome": "Retardador HR-4", "concentracao_bwoc_pct": 0.25, "justificativa": "Retardador de média temperatura para BHCT de 65°C."}},
-    {{"nome": "Dispersante CFR-2", "concentracao_bwoc_pct": 0.20, "justificativa": "Compatibilização reológica e redução de água livre."}}
-  ],
-  "parecer_tecnico": "Pasta intermediária de alta integridade para vedação de gás e preservação da formação produtora."
-}}
-
-Exemplo 4 (Pasta de Varredura / Scavenger: densidade 11.5 ppg, lama 9.8 ppg):
-{{
-  "pasta_nome": "Scavenger Slurry (Varredura)",
-  "classe_cimento": "G",
-  "densidade_alvo_ppg": 11.5,
-  "densidade_lama_recomendada_ppg": 9.8,
-  "agua_gal_sk": 8.0,
-  "aditivos": [
-    {{"nome": "Dispersante CFR-2", "concentracao_bwoc_pct": 0.50, "justificativa": "Alta dispersão para lavagem de reboco e arraste de lama residual em escoamento turbulento."}},
-    {{"nome": "Bentonita (Gel)", "concentracao_bwoc_pct": 3.0, "justificativa": "Extensor para atingir 11.5 ppg e evitar separação de água livre."}}
-  ],
-  "parecer_tecnico": "Pasta de varredura ultraleve e superdispersa bombeada à frente para limpeza do anular."
-}}
-
-FORMATO OBRIGATÓRIO: responda SOMENTE um JSON válido, sem texto fora do objeto.
-UNIDADES: `concentracao_bwoc_pct` é sempre percentual BWOC numérico (ex: 35.0 significa 35% BWOC, 0.35 significa 0.35% BWOC)."""
+  "parecer_tecnico": "Parecer executivo fundamentando a estabilidade e eficiência de deslocamento da pasta."
+}}"""
 
 
 def _construir_prompt_usuario(dados_poco: Dict[str, Any], tipo_pasta: str, requisitos: List[Dict[str, Any]]) -> str:
-    return f"""Projete uma formulação técnica para a **{tipo_pasta}**.
+    return f"""Projete a formulação técnica para: **{tipo_pasta}**.
 
---- DADOS OPERACIONAIS E GEOMECÂNICOS DO POÇO ---
-- Profundidade medida: {dados_poco.get('prof_topo', 0):.1f} m até {dados_poco.get('prof_base', 2000):.1f} m
-- Gradiente de poro: {dados_poco.get('grad_poro', 9.2):.2f} ppg
-- Gradiente de fratura: {dados_poco.get('grad_fratura', 16.8):.2f} ppg
-- Densidade da lama de perfuração: {dados_poco.get('dens_lama', 9.5):.2f} ppg
-- Janela de densidade-alvo: {dados_poco.get('densidade_min_alvo', 15.0):.2f} a {dados_poco.get('densidade_max_alvo', 16.0):.2f} ppg
-- Temperatura estática de fundo (BHST): {dados_poco.get('bhst_c', 80.0):.1f} °C
-- Temperatura circulante de fundo (BHCT): {dados_poco.get('bhct_c', 60.0):.1f} °C
-- Tempo estimado de bombeio: {dados_poco.get('tempo_bombeio_min', 120):.0f} min (+ 60 min de margem de espessamento)
-- Formação de alta permeabilidade: {'Sim' if dados_poco.get('zona_permeavel', False) else 'Não'}
-- Potencial de migração de gás: {'Sim' if dados_poco.get('presenca_gas', False) else 'Não'}
-- Risco de perda de circulação: {'Sim' if dados_poco.get('perda_circulacao', False) else 'Não'}
-- Reologia crítica / alta perda de carga anular: {'Sim' if dados_poco.get('reologia_critica', False) else 'Não'}
-- Observações de engenharia: {dados_poco.get('observacoes', 'Nenhuma')}
+DADOS DO POÇO:
+- Intervalo: {dados_poco.get('prof_topo', 0):.0f} m a {dados_poco.get('prof_base', 2000):.0f} m
+- Janela de Densidade Alvo: {dados_poco.get('densidade_min_alvo', 15.0):.2f} a {dados_poco.get('densidade_max_alvo', 16.0):.2f} ppg
+- Pressões: Poro = {dados_poco.get('grad_poro', 9.2):.2f} ppg | Fratura = {dados_poco.get('grad_fratura', 16.8):.2f} ppg | Lama = {dados_poco.get('dens_lama', 9.5):.2f} ppg
+- Temperaturas: BHCT = {dados_poco.get('bhct_c', 60.0):.1f} °C | BHST = {dados_poco.get('bhst_c', 80.0):.1f} °C
+- Condições: Gás={'Sim' if dados_poco.get('presenca_gas') else 'Não'}, Permeabilidade={'Sim' if dados_poco.get('zona_permeavel') else 'Não'}, Perda de Circulação={'Sim' if dados_poco.get('perda_circulacao') else 'Não'}, Reologia Crítica={'Sim' if dados_poco.get('reologia_critica') else 'Não'}
+- Observações: {dados_poco.get('observacoes', 'Nenhuma')}
 
---- REQUISITOS CRÍTICOS MANDATÓRIOS (DERIVADOS DETERMINISTICAMENTE) ---
+REQUISITOS CRÍTICOS A CUMPRIR:
 {resumo_requisitos(requisitos)}
 
-Retorne exclusivamente o JSON da formulação completa contendo `classe_cimento`, `densidade_alvo_ppg`, `densidade_lama_recomendada_ppg`, `agua_gal_sk`, `aditivos` e `parecer_tecnico`."""
+Retorne exclusivamente o JSON."""
 
 
 def _chamar_groq(cliente: Any, modelo: str, mensagens: List[Dict[str, str]]) -> Tuple[bool, str, str]:
@@ -292,8 +202,9 @@ def recomendar_formulacao_groq(
         return False, None, "Cliente Groq não inicializado. Verifique se a chave GROQ_API_KEY foi informada."
 
     requisitos = derivar_requisitos(dados_poco, tipo_pasta)
+    catalogo_filtrado = filtrar_aditivos_relevantes(catalogo_aditivos, dados_poco, tipo_pasta)
     mensagens: List[Dict[str, str]] = [
-        {"role": "system", "content": _construir_prompt_sistema(catalogo_aditivos)},
+        {"role": "system", "content": _construir_prompt_sistema(catalogo_filtrado)},
         {"role": "user", "content": _construir_prompt_usuario(dados_poco, tipo_pasta, requisitos)},
     ]
 

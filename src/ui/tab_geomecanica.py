@@ -84,7 +84,7 @@ def render_tab_geomecanica():
                     key="radio_unidade_prof_csv"
                 )
             with c_u2:
-                btn_processar_upload = st.button("🚀 Processar & Ativar CSV", key="btn_process_csv", type="secondary")
+                btn_processar_upload = st.button("🚀 Processar & Ativar CSV", key="btn_process_csv", type="secondary", use_container_width=True)
 
             if btn_processar_upload and arquivo_csv is not None:
                 unidade_str = "ft" if "Pés" in unidade_prof else "m"
@@ -100,6 +100,27 @@ def render_tab_geomecanica():
                     st.success(f"✅ {msg}")
                 else:
                     st.error(f"❌ {msg}")
+
+            # Botão para baixar modelo pronto e formatado para testes
+            df_modelo = GeomecanicaService.carregar_preset("15/9-13", "B")
+            if df_modelo is not None:
+                cols_modelo = [c for c in ["prof_m", "poro_ppg", "fratura_ppg", "colapso_ppg", "sobrecarga_ppg"] if c in df_modelo.columns]
+                df_exemplo = df_modelo[cols_modelo].rename(columns={
+                    "prof_m": "Profundidade_m",
+                    "poro_ppg": "Gradiente_Poros_ppg",
+                    "fratura_ppg": "Gradiente_Fratura_ppg",
+                    "colapso_ppg": "Gradiente_Colapso_ppg",
+                    "sobrecarga_ppg": "Gradiente_Sobrecarga_ppg"
+                })
+                csv_buffer = df_exemplo.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📄 Baixar Modelo CSV de Exemplo",
+                    data=csv_buffer,
+                    file_name="modelo_perfil_geomecanico.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    help="Baixe este modelo pré-formatado para abrir no Excel, inspecionar as colunas e testar o upload."
+                )
 
     # 2. Verificação do Perfil Ativo
     perfil_ativo: pd.DataFrame = st.session_state.get("perfil_geomecanico_ativo", None)

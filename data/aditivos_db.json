@@ -58,14 +58,14 @@
         "indicacao": "Extensor leve e agente selante mecânico para redução de densidade"
     },
     "Perlita Regular": {
-        "densidade": 2.20,
+        "densidade": 2.2,
         "tipo": "solido",
         "categoria": "Extensor",
         "dosagem_tipica": "2.0 a 6.0% BWOC",
         "indicacao": "Extensor inorgânico para pastas de baixa densidade"
     },
     "Diatomita (Diacel D)": {
-        "densidade": 2.10,
+        "densidade": 2.1,
         "tipo": "solido",
         "categoria": "Extensor",
         "dosagem_tipica": "10.0 a 30.0% BWOC",
@@ -79,7 +79,7 @@
         "indicacao": "Extensor pozolânico para economia e resistência ao ataque por sulfatos"
     },
     "Pozolana Pozmix D": {
-        "densidade": 2.50,
+        "densidade": 2.5,
         "tipo": "solido",
         "categoria": "Extensor",
         "dosagem_tipica": "20.0 a 40.0% BWOC",
@@ -88,7 +88,7 @@
     "Flor de Sílica (SSA-1)": {
         "densidade": 2.63,
         "tipo": "solido",
-        "categoria": "Especial / Outro",
+        "categoria": "Estabilizador Térmico",
         "bhst_min_c": 110.0,
         "dosagem_tipica": "30.0 a 35.0% BWOC",
         "indicacao": "Estabilizador mandatório contra regressão de resistência em BHST > 110 °C"
@@ -96,20 +96,20 @@
     "Areia de Sílica (Ottawa)": {
         "densidade": 2.63,
         "tipo": "solido",
-        "categoria": "Especial / Outro",
+        "categoria": "Estabilizador Térmico",
         "bhst_min_c": 110.0,
         "dosagem_tipica": "30.0 a 40.0% BWOC",
         "indicacao": "Sílica de granulometria maior para alta permeabilidade e suporte térmico"
     },
     "Cal Hidratada": {
-        "densidade": 2.20,
+        "densidade": 2.2,
         "tipo": "solido",
         "categoria": "Acelerador",
         "dosagem_tipica": "2.0 a 4.0% BWOC",
         "indicacao": "Acelerador e fonte alcalina em sistemas pozolânicos"
     },
     "Gesso (Cal-Seal)": {
-        "densidade": 2.70,
+        "densidade": 2.7,
         "tipo": "solido",
         "categoria": "Acelerador",
         "dosagem_tipica": "5.0 a 15.0% BWOC",
@@ -123,7 +123,7 @@
         "indicacao": "Redução de atrito e viscosidade plástica para facilitar o bombeio"
     },
     "Dispersante CFR-2": {
-        "densidade": 1.30,
+        "densidade": 1.3,
         "tipo": "solido",
         "categoria": "Dispersante",
         "dosagem_tipica": "0.20 a 0.50% BWOC",
@@ -139,7 +139,7 @@
         "indicacao": "Lignossulfonato ideal para temperaturas amenas e moderadas (BHCT 50 a 75 °C)"
     },
     "Retardador HR-7": {
-        "densidade": 1.30,
+        "densidade": 1.3,
         "tipo": "solido",
         "categoria": "Retardador",
         "bhct_min_c": 65.0,

@@ -241,15 +241,37 @@ class GeomecanicaService:
         poros_validos = df["poro_ppg"].dropna()
         fracs_validas = df["fratura_ppg"].dropna()
 
+        # Gradientes representativos de base/fundo (últimos 300m do poço)
+        df_fundo = df[df["prof_m"] >= max(0.0, prof_max_m - 300.0)]
+        fracs_fundo = df_fundo["fratura_ppg"].dropna() if "fratura_ppg" in df_fundo.columns else pd.Series(dtype=float)
+        poros_fundo = df_fundo["poro_ppg"].dropna() if "poro_ppg" in df_fundo.columns else pd.Series(dtype=float)
+
+        if len(fracs_fundo) > 0 and float(fracs_fundo.mean()) > 5.0:
+            fratura_base = float(fracs_fundo.median())
+        elif len(fracs_validas) > 0 and float(fracs_validas.iloc[-1]) > 5.0:
+            fratura_base = float(fracs_validas.iloc[-1])
+        else:
+            fratura_base = 16.50
+
+        if len(poros_fundo) > 0 and float(poros_fundo.max()) > 5.0:
+            poro_base = float(max(8.60, poros_fundo.max()))
+        elif len(poros_validos) > 0 and float(poros_validos.max()) > 5.0:
+            poro_base = float(max(8.60, poros_validos.max()))
+        else:
+            poro_base = 9.00
+
         return {
             "prof_min_m": prof_min_m,
             "prof_max_m": prof_max_m,
             "prof_min_ft": prof_min_ft,
             "prof_max_ft": prof_max_ft,
             "largura_min_ppg": largura_min,
+            "gargalo_min_ppg": largura_min,
             "largura_media_ppg": largura_media,
             "poro_max_ppg": float(poros_validos.max()) if len(poros_validos) else 0.0,
+            "poro_base_ppg": round(poro_base, 2),
             "fratura_min_ppg": float(fracs_validas.min()) if len(fracs_validas) else 0.0,
+            "fratura_base_ppg": round(fratura_base, 2),
             "ponto_critico": ponto_critico,
             "total_pontos": len(df),
             "nome_fonte": df.attrs.get("nome_fonte", "Perfil Ativo")

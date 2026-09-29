@@ -44,20 +44,32 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
     with st.container(border=True):
         col_prov1, col_prov2 = st.columns([1.3, 2.7])
         with col_prov1:
-            st.markdown("##### 🔌 Motor de Inferência")
+            st.markdown("##### 🔌 Motor de Cálculo / Inferência")
             provedor_ia = st.radio(
-                "Selecione a Infraestrutura de Execução:",
+                "Selecione o Motor:",
                 [
-                    "☁️ Groq Cloud LPU (Nuvem - Rápido)",
-                    "🖥️ Ollama Engine (Local - Offline)"
+                    "⚡ Motor Determinístico API Spec 10A (Instantâneo / Sem IA)",
+                    "☁️ Groq Cloud LPU (Nuvem - Rápido com IA)",
+                    "🖥️ Ollama Engine (Local - Offline com IA)"
                 ],
                 key="radio_provedor_ia",
-                help="Groq Cloud processa via LPUs na nuvem com modelos de ponta em milissegundos. Ollama executa localmente no seu computador sem conexão à internet."
+                help="O Motor Determinístico calcula a formulação em milissegundos via regras físicas da API Spec 10A sem gastar tokens nem usar internet. Os modos Groq e Ollama utilizam IA generativa para sugerir formulações e redigir pareceres técnicos detalhados."
             )
         
         with col_prov2:
             st.markdown("##### 📊 Telemetria de Conexão & Modelo")
-            if "Groq" in provedor_ia:
+            if "Determinístico" in provedor_ia:
+                st.markdown("""
+                <div style="background-color: #0f172a; border: 1px solid #1e3a8a; border-radius: 6px; padding: 10px 14px; margin-top: 5px;">
+                    <span style="color: #60a5fa; font-weight: 700; font-size: 0.85rem; font-family: 'JetBrains Mono';">⚡ MOTOR DETERMINÍSTICO DE ENGENHARIA ATIVO</span>
+                    <p style="color: #94a3b8; font-size: 0.80rem; margin: 4px 0 0 0; line-height: 1.4;">
+                        Cálculo estequiométrico e dosagem física direta pelas normas API Spec 10A / RP 10B e Bourgoyne Cap. 3. Zero consumo de tokens e sem dependência de internet.<br>
+                        <span style="color: #fbbf24;"><b>⚠️ Aviso:</b> Justificativas normativas diretas incluídas. Pareceres discursivos em texto livre gerados por IA <b>não existem</b> nesta modalidade.</span>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                modelo_selecionado = "Motor Determinístico (API Spec 10A)"
+            elif "Groq" in provedor_ia:
                 # Obtém chave configurada via st.secrets, .env ou digitada na UI
                 chave_configurada = (
                     st.session_state.get("user_groq_api_key", "")
@@ -197,8 +209,9 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         from src.services.geomecanica_service import GeomecanicaService
         metr = GeomecanicaService.extrair_metricas_resumo(perfil_ativo)
         p_base_est = float(metr.get("prof_max_m", 3200.0))
-        g_poro_est = float(metr.get("poro_max_ppg", 10.20))
-        g_frac_est = float(metr.get("fratura_min_ppg", 16.80))
+        g_poro_est = float(metr.get("poro_base_ppg", metr.get("poro_max_ppg", 10.20)))
+        g_frac_est = float(metr.get("fratura_base_ppg", 16.50))
+        g_frac_min_poco = float(metr.get("fratura_min_ppg", 11.0))
         bhst_prev = round(15.0 + 0.030 * p_base_est, 1)
         bhct_prev = round(max(25.0, bhst_prev * 0.65), 1)
 
@@ -208,8 +221,8 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                 st.markdown(f"🌐 **Perfil Geomecânico Conectado (Aba 1):** `{fonte_nome}`")
                 st.caption(
                     f"Dados extraídos: **TD:** {p_base_est:.0f} m · "
-                    f"**Poro Base:** {g_poro_est:.2f} ppg · **Fratura Base:** {g_frac_est:.2f} ppg · "
-                    f"**BHCT Est.:** {bhct_prev:.0f} °C"
+                    f"**Poro Base:** {g_poro_est:.2f} ppg · **Fratura Base (Sapata):** {g_frac_est:.2f} ppg "
+                    f"(Mín. Rasa: {g_frac_min_poco:.2f} ppg) · **BHCT Est.:** {bhct_prev:.0f} °C"
                 )
             with c_ia_s2:
                 if st.button("🪄 Sincronizar com Perfil da Aba 1", key="btn_sync_ia_profile", type="primary", use_container_width=True):
@@ -223,11 +236,19 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     st.session_state["ia_poro"] = g_poro
                     st.session_state["ia_frac"] = g_frac
                     
-                    st.session_state["ia_dmin"] = round(g_poro + 0.5, 2)
-                    st.session_state["ia_dmax"] = round(max(g_poro + 1.0, g_frac - 0.5), 2)
-                    
+                    # Densidade da lama no fundo
+                    dens_lama_val = 10.60
                     if meta_ativo:
-                        st.session_state["ia_dens_lama"] = float(meta_ativo.get("dens_lama_fundo_ppg", 10.60))
+                        dens_lama_val = float(meta_ativo.get("dens_lama_fundo_ppg", 10.60))
+                    st.session_state["ia_dens_lama"] = dens_lama_val
+                    
+                    # Tail Slurry: pasta de alta resistência na sapata (API RP 10B / Bourgoyne et al. Cap. 3)
+                    # Deve respeitar overbalance sobre o poro e exceder a densidade da lama para eficiência de deslocamento
+                    dmin_tail = max(15.60, round(dens_lama_val + 1.0, 2), round(g_poro + 1.0, 2))
+                    dmax_tail = max(dmin_tail + 0.40, min(16.50, round(g_frac - 0.5, 2)))
+                    
+                    st.session_state["ia_dmin"] = dmin_tail
+                    st.session_state["ia_dmax"] = dmax_tail
                     
                     st.session_state["ia_bhst"] = bhst_prev
                     st.session_state["ia_bhct"] = bhct_prev
@@ -236,7 +257,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
                     largura_min = float(metr.get("largura_min_ppg", 4.0))
                     st.session_state["ia_reologia"] = (largura_min < 2.0)
                     st.session_state["ia_perm"] = True
-                    st.session_state["ia_obs"] = f"Poço {fonte_nome}. Perfil geomecânico contínuo carregado da Aba 1 (TD: {p_base:.0f}m, BHCT: {bhct_prev:.0f}°C)."
+                    st.session_state["ia_obs"] = f"Poço {fonte_nome}. Perfil geomecânico contínuo carregado da Aba 1 (TD: {p_base:.0f}m, Frat. Base: {g_frac:.2f} ppg, BHCT: {bhct_prev:.0f}°C)."
                     st.rerun()
 
     c_pre, c_alvo = st.columns([1.8, 1.4])
@@ -313,14 +334,22 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
 
         obs_texto = st.text_input("Observações Geomecânicas Complementares:", key="ia_obs")
 
-    # Botão de Execução do Agente Especialista
+    # Botão de Execução
+    is_deterministico = "Determinístico" in provedor_ia
     st.write("")
     col_btn1, _ = st.columns([1.8, 1.7])
     with col_btn1:
-        gerar_clicked = st.button("🧠 **Executar Dimensionamento Especialista**", type="primary", use_container_width=True)
+        btn_label = "⚡ **Executar Dimensionamento Determinístico (API Spec 10A)**" if is_deterministico else "🧠 **Executar Dimensionamento Especialista**"
+        gerar_clicked = st.button(btn_label, type="primary", use_container_width=True)
 
     def _executar_ia(dados_entrada: dict, tipo_alvo: str) -> Tuple[bool, Optional[dict], str]:
-        if "Groq" in provedor_ia:
+        if is_deterministico:
+            from src.services.requisitos_ia import gerar_formulacao_deterministica
+            res = gerar_formulacao_deterministica(dados_entrada, tipo_alvo, aditivos_db)
+            if res.get("sucesso"):
+                return True, res["recomendacao"], "Formulação determinística gerada com sucesso."
+            return False, None, "Erro no cálculo determinístico da formulação."
+        elif "Groq" in provedor_ia:
             chave_usada = (
                 st.session_state.get("user_groq_api_key", "")
                 or getattr(config, "GROQ_API_KEY", "")
@@ -348,14 +377,18 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         if "Bi-Pasta" in estrategia_ia:
             with st.spinner(f"Dimensionando Programa Bi-Pasta (Lead + Tail) com {modelo_selecionado}..."):
                 # 1. Tail Slurry (Sapata / Fundo)
+                # Salvaguarda hidrostática: em programa bi-pasta, Tail deve ter peso de sapata (> Lead e > lama)
+                tail_dmin = max(dens_min, 15.60, round(dens_lama + 1.0, 2)) if dens_max <= 13.5 or dens_max <= dens_lama else dens_min
+                tail_dmax = max(dens_max, tail_dmin + 0.40, 16.20) if dens_max <= 13.5 or dens_max <= dens_lama else dens_max
+
                 dados_tail = {
                     'prof_topo': prof_topo + (prof_base - prof_topo) * 0.70 if prof_base > prof_topo else prof_topo,
                     'prof_base': prof_base,
                     'grad_poro': grad_poro,
                     'grad_fratura': grad_frac,
                     'dens_lama': dens_lama,
-                    'densidade_min_alvo': dens_min,
-                    'densidade_max_alvo': dens_max,
+                    'densidade_min_alvo': tail_dmin,
+                    'densidade_max_alvo': tail_dmax,
                     'bhst_c': bhst,
                     'bhct_c': bhct,
                     'tempo_bombeio_min': tempo_bombeio,
@@ -410,14 +443,17 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         elif "Tri-Pasta" in estrategia_ia:
             with st.spinner(f"Dimensionando Programa Tri-Pasta Avançado (Lead + Intermediária + Tail) com {modelo_selecionado}..."):
                 # 1. Tail Slurry (Sapata / Fundo - 25% inferior)
+                tail_dmin = max(dens_min, 15.60, round(dens_lama + 1.0, 2)) if dens_max <= 13.5 or dens_max <= dens_lama else dens_min
+                tail_dmax = max(dens_max, tail_dmin + 0.40, 16.20) if dens_max <= 13.5 or dens_max <= dens_lama else dens_max
+
                 dados_tail = {
                     'prof_topo': prof_topo + (prof_base - prof_topo) * 0.75 if prof_base > prof_topo else prof_topo,
                     'prof_base': prof_base,
                     'grad_poro': grad_poro,
                     'grad_fratura': grad_frac,
                     'dens_lama': dens_lama,
-                    'densidade_min_alvo': dens_min,
-                    'densidade_max_alvo': dens_max,
+                    'densidade_min_alvo': tail_dmin,
+                    'densidade_max_alvo': tail_dmax,
                     'bhst_c': bhst,
                     'bhct_c': bhct,
                     'tempo_bombeio_min': tempo_bombeio,
@@ -492,14 +528,17 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         elif "Tetra-Pasta" in estrategia_ia:
             with st.spinner(f"Dimensionando Programa Tetra-Pasta com Varredura com {modelo_selecionado}..."):
                 # Tail Slurry
+                tail_dmin = max(dens_min, 15.60, round(dens_lama + 1.0, 2)) if dens_max <= 13.5 or dens_max <= dens_lama else dens_min
+                tail_dmax = max(dens_max, tail_dmin + 0.40, 16.20) if dens_max <= 13.5 or dens_max <= dens_lama else dens_max
+
                 dados_tail = {
                     'prof_topo': prof_topo + (prof_base - prof_topo) * 0.75 if prof_base > prof_topo else prof_topo,
                     'prof_base': prof_base,
                     'grad_poro': grad_poro,
                     'grad_fratura': grad_frac,
                     'dens_lama': dens_lama,
-                    'densidade_min_alvo': dens_min,
-                    'densidade_max_alvo': dens_max,
+                    'densidade_min_alvo': tail_dmin,
+                    'densidade_max_alvo': tail_dmax,
                     'bhst_c': bhst,
                     'bhct_c': bhct,
                     'tempo_bombeio_min': tempo_bombeio,
@@ -659,6 +698,12 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         res_scav = prog.get("scavenger", {})
 
         st.markdown("---")
+        if is_deterministico:
+            st.info(
+                "⚙️ **Modalidade Determinística (Regras API Spec 10A / RP 10B):** "
+                "Formulação calculada deterministicamente. As dosagens e seleção de aditivos seguem regras estritas de engenharia de campo. "
+                "**Nota:** Justificativas normativas diretas foram aplicadas para cada aditivo; pareceres discursivos em texto livre e redação livre gerados por IA **não estão presentes** nesta modalidade."
+            )
         if tipo_prog == "tetra":
             st.markdown("#### ⚡ Programa Tetra-Pasta Completo com Varredura (Scavenger + Lead + Middle + Tail)")
             st.caption("Estratégia avançada de 4 estágios: varredura e limpeza anular, preenchimento leve, isolamento de reservatório e sapata estrutural.")
@@ -777,6 +822,12 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
         rec = st.session_state["ultima_recomendacao_ia"]
 
         st.markdown("---")
+        if is_deterministico:
+            st.info(
+                "⚙️ **Modalidade Determinística (Regras API Spec 10A / RP 10B):** "
+                "Formulação calculada deterministicamente. As dosagens e seleção de aditivos seguem regras estritas de campo. "
+                "**Nota:** Justificativas normativas diretas foram aplicadas para cada aditivo; pareceres discursivos em texto livre e redação livre gerados por IA **não estão presentes** nesta modalidade."
+            )
         st.markdown("#### 🏆 Parecer Técnico & Receita Química de Campo")
 
         with st.container(border=True):
