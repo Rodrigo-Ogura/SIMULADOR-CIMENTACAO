@@ -197,13 +197,17 @@ Documento de registro contínuo de evolução, alterações de código, testes e
       - Ativação das ferramentas de inspeção do Plotly (`PLOTLY_CONFIG_INTERATIVO` com `displayModeBar=True`), permitindo zoom por caixa, pan, comparação de coordenadas e download de imagem em PNG 300 DPI em ambos os gráficos e no gráfico de componentes.
       - **Refatoração Visual e Alinhamento Simétrico dos Controles:** Eliminação do empilhamento vertical do seletor `st.segmented_control` e layout simétrico de 2 linhas com CSS anti-quebra.
 
-   6. **Curva em Escada da Densidade dos Fluidos (*Slurry Weight Staircase*) & Refino Geomecânico Industrial ([`src/ui/dashboard.py`](./src/ui/dashboard.py)):**
+   6. **Curva em Escada da Densidade dos Fluidos (*Slurry Weight Staircase*) & Refino Geomecânico Industrial ([`src/ui/dashboard.py`](./src/ui/dashboard.py)):
       - Substituição da reta contínua simplificada por um **perfil em degraus ortogonais (*step-plot*)** via `_gerar_perfil_escada_fluidos()`, exibindo a densidade exata de cada fluido no anular:
         - $0 	o 	ext{TOC}$: Lama de perfuração ($ho_{	ext{lama}}$).
         - $	ext{TOC} 	o 	ext{Sapata}$: Pastas de cimento em patamares sucessivos (Lead $	o$ Tail).
       - **Diferenciação Semântica Dupla:** A curva em escada (`🪜 Peso dos Fluidos`) convive harmoniosamente com o gradiente integrado (`🌊 EMW Acumulado`), permitindo análise física completa da coluna.
       - **Refino Físico do Modo Analítico:** Eliminação da "reta diagonal rígida que atravessava o gráfico". O poço agora assume profundidade total geológica realista com curvatura suave de compactação de bacia sedimentar e lama da superfície até o TOC.
       - **Anotações Geotécnicas Automáticas:** Linhas horizontais discretas demarcando as cotas de **TOC** e **Sapata**.
+
+   7. **Harmonização de Guardrail de Entrada entre IA e Motor Determinístico ([`src/services/requisitos_ia.py`](./src/services/requisitos_ia.py)):**
+      - *Causa:* Em `validar_dados_poco()`, a condição estática `dens_max > grad_fratura - 0.5` bloqueava a IA prematuramente quando a Tail Slurry na sapata operava próxima ao gradiente de fratura do poço, enquanto o motor determinístico calculava normalmente a pasta ajustando a densidade ideal.
+      - *Correção:* Substituição da regra estática por validação de impossibilidade física estrita (`dens_min >= grad_fratura`). Agora a IA (Groq / Ollama) e o motor determinístico operam com o mesmo critério tolerante e inteligente, permitindo caldas densas de sapata em poços com alívio anular superior por Lead leve.
 
 ---
 

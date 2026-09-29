@@ -36,8 +36,8 @@ def validar_dados_poco(dados_poco: Dict[str, Any]) -> List[str]:
         erros.append("A janela de densidade deve conter valores positivos e mínimo menor ou igual ao máximo.")
     if grad_poro > 0 and grad_fratura > 0 and grad_poro >= grad_fratura:
         erros.append("O gradiente de poro deve ser inferior ao gradiente de fratura.")
-    if grad_fratura > 0 and dens_max > grad_fratura - 0.5:
-        erros.append("A densidade máxima deve permanecer ao menos 0,5 ppg abaixo do gradiente de fratura.")
+    if grad_fratura > 0 and dens_min >= grad_fratura:
+        erros.append(f"A densidade mínima da pasta ({dens_min:.2f} ppg) não pode ser superior ou igual ao gradiente de fratura ({grad_fratura:.2f} ppg).")
     if dens_lama > 0 and grad_poro > 0 and dens_lama < grad_poro:
         erros.append(f"A densidade da lama ({dens_lama:.2f} ppg) deve ser superior à pressão de poros ({grad_poro:.2f} ppg) para manter o overbalance de segurança.")
     if dens_lama > 0 and grad_fratura > 0 and dens_lama >= grad_fratura:
