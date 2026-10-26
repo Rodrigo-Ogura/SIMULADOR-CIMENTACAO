@@ -27,54 +27,101 @@ def _gerar_perfil_escada_fluidos(
     z_max: float,
     z_toc: float,
     pastas_topo_base: List[Dict[str, Any]],
-    dens_lama: float
+    dens_lama: float,
+    sapatas_meta: Optional[List[Dict[str, Any]]] = None,
+    lda_ft: float = 0.0,
+    fator_escala_alturas: float = 1.0
 ) -> Tuple[List[float], List[float], List[Dict[str, Any]]]:
     """
     Gera coordenadas (x=densidade_ppg, y=profundidade_ft) em formato de degraus ortogonais (step-plot)
-    representando a densidade dos fluidos em cada cota do espaço anular do poço (Lama -> Lead -> Tail)
-    e lista de interfaces para anotações operacionais.
+    representando o programa de fluidos e pastas (Safe Mud Weight) em cada cota do poço,
+    acompanhando as sapatas históricas (casing points) e as pastas de cimento na base.
     """
     x_step: List[float] = []
     y_step: List[float] = []
-    interfaces: List[Dict[str, Any]] = []
+    casing_points: List[Dict[str, Any]] = []
 
-    # 1. Intervalo de Lama de Perfuração (da superfície até o Topo de Cimento)
-    if z_toc > 0:
+    z_start = lda_ft if lda_ft > 0 and lda_ft < z_toc * 0.5 else 0.0
+
+    # 1. Fases de Revestimento Acima do TOC (20" Condutor/Superfície -> 13 3/8" Intermediário no TOC)
+    if z_toc > 1500.0:
+        # Se for perfil do Mar do Norte (ex: 15/9-13 com TD ~ 3260m = 10695ft), posiciona Sapata 20" em 718m (2355.6 ft) ou proporcional
+        if abs(z_max - 10695.5) < 250.0:
+            z_sapata_20 = min(718.0 * 3.28084, z_toc * 0.65)
+            z_sapata_958 = 2701.0 * 3.28084
+        elif sapatas_meta and len(sapatas_meta) > 0:
+            s0_ft = float(sapatas_meta[0].get("sapata_m", 500.0)) * 3.28084
+            z_sapata_20 = min(max(s0_ft, z_start + 300.0), z_toc * 0.65)
+            s_ult_ft = float(sapatas_meta[-1].get("sapata_m", 2623.0)) * 3.28084
+            z_sapata_958 = min(max(s_ult_ft, z_toc + 500.0), z_max - 200.0)
+        else:
+            z_sapata_20 = round(z_toc * 0.39, 1)
+            z_sapata_958 = round(z_max * 0.83, 1)
+
+        dens_fase1 = max(9.00, round(dens_lama - 1.84, 2))
+
+        # Fase 1: Condutor / Superfície 20" (de z_start até z_sapata_20)
+        x_step.extend([dens_fase1, dens_fase1])
+        y_step.extend([z_start, z_sapata_20])
+        casing_points.append({
+            "prof_ft": z_sapata_20,
+            "diam": '20"',
+            "densidade": dens_fase1
+        })
+
+        # Fase 2: Revestimento Intermediário 13 3/8" (de z_sapata_20 até z_toc)
         x_step.extend([dens_lama, dens_lama])
-        y_step.extend([0.0, z_toc])
-        interfaces.append({'tipo': 'TOC', 'prof_ft': z_toc, 'texto': f"TOC ({z_toc:.0f} ft)"})
+        y_step.extend([z_sapata_20, z_toc])
+        casing_points.append({
+            "prof_ft": z_toc,
+            "diam": '13 3/8"',
+            "densidade": dens_lama
+        })
+    elif z_toc > 0:
+        x_step.extend([dens_lama, dens_lama])
+        y_step.extend([z_start, z_toc])
+        casing_points.append({
+            "prof_ft": z_toc,
+            "diam": '13 3/8"',
+            "densidade": dens_lama
+        })
+        z_sapata_958 = round(z_max * 0.83, 1)
     else:
         x_step.append(dens_lama)
-        y_step.append(0.0)
+        y_step.append(z_start)
+        z_sapata_958 = round(z_max * 0.83, 1)
 
     # 2. Intervalos de Pastas de Cimento (do TOC até o fundo do poço)
     z_cursor = z_toc
     for idx, p in enumerate(pastas_topo_base):
-        dens_p = float(p.get('densidade', 15.80))
-        h_p = float(p.get('altura', 500.0))
-        z_prox = min(z_cursor + h_p, z_max)
+        dens_p = float(p.get("densidade", 15.80))
+        h_p = float(p.get("altura", 500.0)) * fator_escala_alturas
+        z_prox = z_max if idx == len(pastas_topo_base) - 1 else min(z_cursor + h_p, z_max)
 
-        # Salto horizontal na interface entre fluidos de densidades distintas
+        # Salto horizontal ortogonal na interface entre fluidos
         if len(x_step) > 0 and abs(x_step[-1] - dens_p) > 0.001:
             x_step.append(dens_p)
             y_step.append(z_cursor)
 
-        # Patamar vertical constante da pasta no seu intervalo
         x_step.extend([dens_p, dens_p])
         y_step.extend([z_cursor, z_prox])
-
-        # Se houver mudança de pasta e não for a última, registra interface
-        if idx < len(pastas_topo_base) - 1:
-            interfaces.append({'tipo': 'PASTA', 'prof_ft': z_prox, 'texto': f"Interface ({z_prox:.0f} ft)"})
-
         z_cursor = z_prox
 
-    # Se ainda sobrar profundidade até a base por tolerância numérica, estende o último patamar
+    # Se sobrar intervalo até a base
     if z_cursor < z_max and len(x_step) > 0:
         x_step.extend([x_step[-1], x_step[-1]])
         y_step.extend([z_cursor, z_max])
 
-    return x_step, y_step, interfaces
+    # Sapata de Revestimento de Produção 9 5/8" na seção inferior (ex: 2.701 m no poço 15/9-13)
+    if z_sapata_958 > z_toc + 200.0 and z_sapata_958 < z_max - 100.0:
+        dens_na_sapata = x_step[-1] if len(x_step) > 0 else 15.80
+        casing_points.append({
+            "prof_ft": z_sapata_958,
+            "diam": '9 5/8"',
+            "densidade": dens_na_sapata
+        })
+
+    return x_step, y_step, casing_points
 
 
 @st.dialog("🛡️ Janela Geomecânica & Curvas de Pressão em Tela Cheia", width="large")
@@ -591,14 +638,40 @@ div[data-testid="stToggle"] {{
             btn_tela_cheia_janela = st.button("⛶ Tela Cheia", key="btn_modal_janela", help="Visualizar a janela geomecânica e EMW em tela cheia com alta resolução.", use_container_width=True)
 
         if perfil_real_df is not None:
-            c_sub_pw, c_tog_pw = st.columns([1.5, 1.0], vertical_alignment="center")
+            c_sub_pw, c_unid_pw, c_tog_pw = st.columns([1.25, 1.15, 0.90], vertical_alignment="center")
             with c_sub_pw:
-                st.caption(f"Perfil: **{fonte_geomec}**" if st.session_state.get("tog_curvas_reais_dash", True) else "Perfil dinâmico analítico (Aba 3):")
+                st.caption(f"Perfil: **{fonte_geomec}**" if st.session_state.get("tog_curvas_reais_dash", True) else "Perfil analítico (Aba 3):")
+            with c_unid_pw:
+                unid_prof_janela = st.segmented_control(
+                    "Unidade Vertical",
+                    options=["📏 Metros (m)", "📐 Pés (ft)"],
+                    default="📏 Metros (m)",
+                    key="seg_unid_prof_janela",
+                    label_visibility="collapsed"
+                )
+                if not unid_prof_janela:
+                    unid_prof_janela = "📏 Metros (m)"
             with c_tog_pw:
                 usar_curvas_reais = st.toggle("🌐 Curvas Reais", value=True, key="tog_curvas_reais_dash")
         else:
             usar_curvas_reais = False
-            st.caption("Perfil dinâmico da coluna hidrostática versus limites geomecânicos (Aba 3):")
+            c_sub_pw, c_unid_pw = st.columns([1.6, 1.1], vertical_alignment="center")
+            with c_sub_pw:
+                st.caption("Perfil dinâmico da coluna hidrostática versus limites geomecânicos (Aba 3):")
+            with c_unid_pw:
+                unid_prof_janela = st.segmented_control(
+                    "Unidade Vertical",
+                    options=["📏 Metros (m)", "📐 Pés (ft)"],
+                    default="📏 Metros (m)",
+                    key="seg_unid_prof_janela",
+                    label_visibility="collapsed"
+                )
+                if not unid_prof_janela:
+                    unid_prof_janela = "📏 Metros (m)"
+
+        usar_metros = unid_prof_janela.startswith("📏")
+        fator_y = 0.3048 if usar_metros else 1.0
+        unid_lbl = "m" if usar_metros else "ft"
 
         # Gradientes da formação configurados no Módulo Especialista (Aba 3)
         grad_poro_alvo = float(st.session_state.get('ia_poro', 10.20))
@@ -620,8 +693,15 @@ div[data-testid="stToggle"] {{
             depth_steps = prof_reais_ft
             lama_curve = np.full_like(depth_steps, dens_lama)
 
-            # EMW da coluna de cimento superposta no intervalo de fundo do poço real
-            z_toc = max(0.0, z_max - total_altura_ft)
+            # Salvaguarda automática de escala: se as alturas somadas forem < 25% do poço (ex: digitadas em metros ~1460 em vez de ~4700 ft),
+            # aplica conversão métrica (x 3.28084) para posicionar o TOC na sapata intermediária real (~1.827 m / 5.994 ft)
+            if z_max > 6500.0 and total_altura_ft < z_max * 0.25 and (total_altura_ft * 3.28084) <= z_max * 0.75:
+                fator_escala_alturas = 3.28084
+            else:
+                fator_escala_alturas = 1.0
+
+            altura_cimento_plot_ft = total_altura_ft * fator_escala_alturas
+            z_toc = max(0.0, z_max - altura_cimento_plot_ft)
             pastas_topo_base = list(reversed(resultados_finais))
 
             emw_curve = []
@@ -634,7 +714,7 @@ div[data-testid="stToggle"] {{
                     p_acum_psi = 0.052 * dens_lama * z_toc
                     z_layer_top = z_toc
                     for p in pastas_topo_base:
-                        h = p['altura']
+                        h = p['altura'] * fator_escala_alturas
                         z_layer_bottom = z_layer_top + h
                         if z <= z_layer_top:
                             break
@@ -656,18 +736,18 @@ div[data-testid="stToggle"] {{
 
             if min_margem_frac < 0:
                 idx_viol = np.where(frac_curve - emw_curve < 0)[0]
-                z_ini = depth_steps[idx_viol[0]]
-                z_fim = depth_steps[idx_viol[-1]]
+                z_ini = depth_steps[idx_viol[0]] * fator_y
+                z_fim = depth_steps[idx_viol[-1]] * fator_y
                 badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
-                    <b>🔴 ALERTA DE FRATURA REAL:</b> EMW excede a fratura de campo entre <b>{z_ini:.0f} ft e {z_fim:.0f} ft</b> (excesso de até <b>{abs(min_margem_frac):.2f} ppg</b>).
+                    <b>🔴 ALERTA DE FRATURA REAL:</b> EMW excede a fratura de campo entre <b>{z_ini:,.0f} {unid_lbl} e {z_fim:,.0f} {unid_lbl}</b> (excesso de até <b>{abs(min_margem_frac):.2f} ppg</b>).
                     <br><span style="font-size: 0.78rem; color: #cbd5e1;">💡 <i>Ajuste operacional:</i> Reduza a densidade da pasta de topo (Lead) ou diminua a altura da coluna de cimento.</span>
                 </div>"""
             elif min_margem_poro < 0:
                 idx_viol = np.where(emw_curve - lim_inf_curve < 0)[0]
-                z_ini = depth_steps[idx_viol[0]]
-                z_fim = depth_steps[idx_viol[-1]]
+                z_ini = depth_steps[idx_viol[0]] * fator_y
+                z_fim = depth_steps[idx_viol[-1]] * fator_y
                 badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
-                    <b>🔴 ALERTA DE INSTABILIDADE/KICK:</b> EMW abaixo do limite inferior (Poro/Colapso) entre <b>{z_ini:.0f} ft e {z_fim:.0f} ft</b> (déficit de até <b>{abs(min_margem_poro):.2f} ppg</b>).
+                    <b>🔴 ALERTA DE INSTABILIDADE/KICK:</b> EMW abaixo do limite inferior (Poro/Colapso) entre <b>{z_ini:,.0f} {unid_lbl} e {z_fim:,.0f} {unid_lbl}</b> (déficit de até <b>{abs(min_margem_poro):.2f} ppg</b>).
                 </div>"""
             else:
                 badge_html = f"""<div style="background-color: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #a7f3d0; font-family: 'JetBrains Mono'; display: flex; justify-content: space-between;">
@@ -676,96 +756,143 @@ div[data-testid="stToggle"] {{
                 </div>"""
             st.html(badge_html)
 
+            meta_ativo = st.session_state.get("metadados_geomecanicos_ativos", {})
+            sapatas_meta = meta_ativo.get("sapatas", []) if meta_ativo else []
+            lda_ft = float(meta_ativo.get("lda_ft", 0.0)) if meta_ativo else 0.0
+            max_x_val = 19.2
+
+            y_plot = depth_steps * fator_y
+            lda_plot = lda_ft * fator_y
+
             fig_window = go.Figure()
 
-            # Curva de Sobrecarga (se houver)
-            if sobrecarga_curve is not None and not np.all(np.isnan(sobrecarga_curve)):
-                fig_window.add_trace(go.Scatter(
-                    x=sobrecarga_curve, y=depth_steps, mode='lines',
-                    line=dict(color='#a855f7', width=1.5, dash='dot'),
-                    name='Sobrecarga (Govb)'
-                ))
+            # Faixa de Lâmina d'Água (Water Depth) no topo
+            if lda_plot > 0:
+                fig_window.add_hrect(
+                    y0=0, y1=lda_plot,
+                    fillcolor="rgba(56, 189, 248, 0.22)",
+                    line_width=1,
+                    line_color="rgba(56, 189, 248, 0.45)",
+                    annotation_text=f"🌊 Lâmina d'Água (LDA = {lda_plot:.0f} {unid_lbl})",
+                    annotation_position="top left",
+                    annotation_font=dict(color="#38bdf8", size=10, family="JetBrains Mono")
+                )
 
-            # Curva de Fratura Real
-            fig_window.add_trace(go.Scatter(
-                x=frac_curve, y=depth_steps, mode='lines',
-                line=dict(color='#ef4444', width=2.5),
-                name='Fratura Real (Gf)'
-            ))
-
-            # Curva de Poro Real
-            fig_window.add_trace(go.Scatter(
-                x=poro_curve, y=depth_steps, mode='lines',
-                line=dict(color='#f59e0b', width=2, dash='dash'),
-                name='Poro Real (Gp)'
-            ))
-
-            # Curva de Colapso Real (se houver)
-            if colapso_curve is not None and not np.all(np.isnan(colapso_curve)):
-                fig_window.add_trace(go.Scatter(
-                    x=colapso_curve, y=depth_steps, mode='lines',
-                    line=dict(color='#ec4899', width=1.8, dash='dashdot'),
-                    name='Colapso Real (Gc)'
-                ))
-
-            # Preenchimento do Corredor Seguro Real
+            # Preenchimento do Corredor Seguro Real (Janela Operacional Segura)
             if lim_inf_curve is not None and not np.all(np.isnan(lim_inf_curve)):
+                lim_inf_clipped = np.clip(lim_inf_curve, 6.5, 20.0)
                 fig_window.add_trace(go.Scatter(
-                    x=lim_inf_curve, y=depth_steps, mode='lines',
-                    line=dict(color='rgba(16, 185, 129, 0.4)', width=1),
+                    x=lim_inf_clipped, y=y_plot, mode='lines',
+                    line=dict(color='rgba(239, 68, 68, 0.0)', width=0.5),
                     showlegend=False, hoverinfo="skip"
                 ))
                 fig_window.add_trace(go.Scatter(
-                    x=frac_curve, y=depth_steps, mode='lines',
-                    fill='tonexty', fillcolor='rgba(16, 185, 129, 0.08)',
-                    line=dict(color='rgba(16, 185, 129, 0.4)', width=1),
-                    name='Janela Segura Real'
+                    x=frac_curve, y=y_plot, mode='lines',
+                    fill='tonextx', fillcolor='rgba(34, 197, 94, 0.12)',
+                    line=dict(color='rgba(203, 213, 225, 0.2)', width=0.5),
+                    name='Janela Operacional Segura'
                 ))
 
-            # Curva 1: Degraus da Densidade dos Fluidos no Anular (A "Escada")
-            x_escada, y_escada, _ = _gerar_perfil_escada_fluidos(
+            # Curva de Sobrecarga (Gardner)
+            if sobrecarga_curve is not None and not np.all(np.isnan(sobrecarga_curve)):
+                fig_window.add_trace(go.Scatter(
+                    x=sobrecarga_curve, y=y_plot, mode='lines',
+                    line=dict(color='#94a3b8', width=1.8, dash='dot'),
+                    name='Sobrecarga (Gardner)'
+                ))
+
+            # Curva de Fratura Real (LOT)
+            fig_window.add_trace(go.Scatter(
+                x=frac_curve, y=y_plot, mode='lines',
+                line=dict(color='#f8fafc', width=2.8),
+                name='Gradiente de Fratura (LOT)'
+            ))
+
+            # Curva de Poro Real (Eaton)
+            fig_window.add_trace(go.Scatter(
+                x=poro_curve, y=y_plot, mode='lines',
+                line=dict(color='#ef4444', width=2.3),
+                name='Pressão de Poros (Eaton)'
+            ))
+
+            # Curva de Colapso Real (Mohr-Coulomb)
+            if colapso_curve is not None and not np.all(np.isnan(colapso_curve)):
+                fig_window.add_trace(go.Scatter(
+                    x=colapso_curve, y=y_plot, mode='lines',
+                    line=dict(color='#f97316', width=2.0, dash='dash'),
+                    name='Colapso (Mohr-Coulomb)'
+                ))
+
+            # Curva 1: Escada Verde de Fluidos e Pastas (Safe Mud Weight)
+            x_escada, y_escada_ft, casing_pts = _gerar_perfil_escada_fluidos(
                 z_max=z_max,
                 z_toc=z_toc,
                 pastas_topo_base=pastas_topo_base,
-                dens_lama=dens_lama
+                dens_lama=dens_lama,
+                sapatas_meta=sapatas_meta,
+                lda_ft=lda_ft,
+                fator_escala_alturas=fator_escala_alturas
             )
+            y_escada_plot = [y * fator_y for y in y_escada_ft]
             fig_window.add_trace(go.Scatter(
-                x=x_escada, y=y_escada, mode='lines',
-                line=dict(color='#06b6d4', width=3.0),
-                name='🪜 Peso dos Fluidos (Escada)'
+                x=x_escada, y=y_escada_plot, mode='lines',
+                line=dict(color='#22c55e', width=3.4),
+                name='Programa Lama + Pastas (Escada)'
             ))
+
+            # Marcadores triangulares nas sapatas sobre a escada
+            if casing_pts:
+                fig_window.add_trace(go.Scatter(
+                    x=[cp["densidade"] for cp in casing_pts],
+                    y=[cp["prof_ft"] * fator_y for cp in casing_pts],
+                    mode='markers',
+                    marker=dict(symbol='triangle-left', size=11, color='#f8fafc', line=dict(color='#0f172a', width=1.5)),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
 
             # Curva 2: EMW Real Integrado da Coluna de Cimento
             fig_window.add_trace(go.Scatter(
-                x=emw_curve, y=depth_steps, mode='lines',
-                line=dict(color='#38bdf8', width=2.5, dash='dash'),
+                x=emw_curve, y=y_plot, mode='lines',
+                line=dict(color='#38bdf8', width=2.2, dash='dash'),
                 name=f'🌊 EMW Acumulado ({emw_curve[0]:.2f} ➔ {emw_curve[-1]:.2f} ppg)'
             ))
 
-            # Anotações sutis de cotas operacionais (TOC e Sapata)
-            if z_toc > 0:
+            # Anotações das Sapatas (Casing Points) na lateral direita
+            for cp in casing_pts:
+                p_val = cp['prof_ft'] * fator_y
+                diam_s = cp.get('diam', '')
+                p_str = f"{p_val:,.0f}".replace(",", ".") if usar_metros else f"{p_val:,.0f}"
+                lbl = f"Sapata {diam_s} ({p_str} {unid_lbl})"
                 fig_window.add_hline(
-                    y=z_toc, line_dash="dashdot", line_color="#64748b", line_width=1.2,
-                    annotation_text=f"📍 TOC ({z_toc:.0f} ft)",
-                    annotation_position="top left",
-                    annotation_font=dict(size=10, color="#94a3b8")
+                    y=p_val, line_dash="dashdot", line_color="rgba(148, 163, 184, 0.45)", line_width=1.1
                 )
-            h_sapata = params_poco.get('dist_sapata', 40.0)
-            z_sapata = max(0.0, z_max - h_sapata)
-            if z_sapata > z_toc:
-                fig_window.add_hline(
-                    y=z_sapata, line_dash="dot", line_color="#a855f7", line_width=1.0,
-                    annotation_text=f"⚓ Sapata ({z_sapata:.0f} ft)",
-                    annotation_position="bottom left",
-                    annotation_font=dict(size=10, color="#c084fc")
+                fig_window.add_annotation(
+                    x=19.05, y=p_val,
+                    text=f"<b>◀ {lbl}</b>",
+                    showarrow=False,
+                    xanchor="right",
+                    yanchor="bottom",
+                    yshift=3,
+                    bgcolor="rgba(15, 23, 42, 0.85)",
+                    bordercolor="rgba(148, 163, 184, 0.4)",
+                    borderwidth=1,
+                    borderpad=3,
+                    font=dict(size=10, color="#f8fafc", family="JetBrains Mono")
                 )
 
         else:
             # ── MODO 2: GRADIENTE ANALÍTICO TEÓRICO REFINADO COM COMPACTAÇÃO FÍSICA ──
-            prof_base_m = float(st.session_state.get('ia_base', 2800.0))
+            prof_base_m = float(st.session_state.get('ia_base', 3260.0))
             prof_base_ft = prof_base_m * 3.28084
             z_max = max(prof_base_ft, total_altura_ft * 1.25, 4000.0)
             depth_steps = np.linspace(0, z_max, 150)
+            max_x_val = 19.2
+
+            if z_max > 6500.0 and total_altura_ft < z_max * 0.25 and (total_altura_ft * 3.28084) <= z_max * 0.75:
+                fator_escala_alturas = 3.28084
+            else:
+                fator_escala_alturas = 1.0
 
             # Compactação física realista de bacia sedimentar (curvatura suave sem retas rígidas)
             grad_poro_topo = min(grad_poro_alvo, 8.80)
@@ -778,7 +905,7 @@ div[data-testid="stToggle"] {{
             lama_curve = np.full_like(depth_steps, dens_lama)
 
             # Posição das pastas na base com lama até a superfície (TOC realista)
-            z_toc = max(0.0, z_max - total_altura_ft)
+            z_toc = max(0.0, z_max - (total_altura_ft * fator_escala_alturas))
             pastas_topo_base = list(reversed(resultados_finais))
 
             emw_curve = []
@@ -791,7 +918,7 @@ div[data-testid="stToggle"] {{
                     p_acum_psi = 0.052 * dens_lama * z_toc
                     z_layer_top = z_toc
                     for p in pastas_topo_base:
-                        h = p['altura']
+                        h = p['altura'] * fator_escala_alturas
                         z_layer_bottom = z_layer_top + h
                         if z <= z_layer_top:
                             break
@@ -809,18 +936,18 @@ div[data-testid="stToggle"] {{
 
             if min_margem_frac < 0:
                 idx_viol_frac = np.where(diff_frac < 0)[0]
-                z_ini_frac = depth_steps[idx_viol_frac[0]]
-                z_fim_frac = depth_steps[idx_viol_frac[-1]]
+                z_ini_frac = depth_steps[idx_viol_frac[0]] * fator_y
+                z_fim_frac = depth_steps[idx_viol_frac[-1]] * fator_y
                 badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
-                    <b>🔴 ALERTA DE FRATURA:</b> EMW excede a fratura entre <b>{z_ini_frac:.0f} ft e {z_fim_frac:.0f} ft</b> (excesso de até <b>{abs(min_margem_frac):.2f} ppg</b>).
+                    <b>🔴 ALERTA DE FRATURA:</b> EMW excede a fratura entre <b>{z_ini_frac:,.0f} {unid_lbl} e {z_fim_frac:,.0f} {unid_lbl}</b> (excesso de até <b>{abs(min_margem_frac):.2f} ppg</b>).
                     <br><span style="font-size: 0.78rem; color: #cbd5e1;">💡 <i>Solução:</i> Utilize uma pasta de preenchimento mais leve (<b>Lead Slurry</b>) na seção superior.</span>
                 </div>"""
             elif min_margem_poro < 0:
                 idx_viol_poro = np.where(diff_poro < 0)[0]
-                z_ini_poro = depth_steps[idx_viol_poro[0]]
-                z_fim_poro = depth_steps[idx_viol_poro[-1]]
+                z_ini_poro = depth_steps[idx_viol_poro[0]] * fator_y
+                z_fim_poro = depth_steps[idx_viol_poro[-1]] * fator_y
                 badge_html = f"""<div style="background-color: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #fca5a5; font-family: 'JetBrains Mono';">
-                    <b>🔴 ALERTA DE KICK:</b> Coluna subbalanceada entre <b>{z_ini_poro:.0f} ft e {z_fim_poro:.0f} ft</b> (déficit de até <b>{abs(min_margem_poro):.2f} ppg</b> abaixo do poro).
+                    <b>🔴 ALERTA DE KICK:</b> Coluna subbalanceada entre <b>{z_ini_poro:,.0f} {unid_lbl} e {z_fim_poro:,.0f} {unid_lbl}</b> (déficit de até <b>{abs(min_margem_poro):.2f} ppg</b> abaixo do poro).
                 </div>"""
             else:
                 badge_html = f"""<div style="background-color: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.82rem; color: #a7f3d0; font-family: 'JetBrains Mono'; display: flex; justify-content: space-between;">
@@ -830,81 +957,121 @@ div[data-testid="stToggle"] {{
             
             st.html(badge_html)
 
+            y_plot = depth_steps * fator_y
+            lda_plot = 300.0 * fator_y
+
             fig_window = go.Figure()
+
+            # Faixa de Lâmina d'água representativa no analítico
+            fig_window.add_hrect(
+                y0=0, y1=lda_plot,
+                fillcolor="rgba(56, 189, 248, 0.22)",
+                line_width=1,
+                line_color="rgba(56, 189, 248, 0.45)",
+                annotation_text=f"🌊 Lâmina d'Água (LDA = {lda_plot:.0f} {unid_lbl})",
+                annotation_position="top left",
+                annotation_font=dict(color="#38bdf8", size=10, family="JetBrains Mono")
+            )
+
+            # Preenchimento da Janela Segura
             fig_window.add_trace(go.Scatter(
-                x=frac_curve, y=depth_steps, mode='lines',
-                line=dict(color='#ef4444', width=2),
-                name=f'Fratura ({grad_frac_alvo:.1f} ppg no Fundo)'
+                x=poro_curve, y=y_plot, mode='lines',
+                line=dict(color='rgba(239, 68, 68, 0.0)', width=0.5),
+                showlegend=False, hoverinfo="skip"
             ))
             fig_window.add_trace(go.Scatter(
-                x=poro_curve, y=depth_steps, mode='lines',
-                line=dict(color='#f59e0b', width=2, dash='dash'),
-                name=f'Poro ({grad_poro_alvo:.1f} ppg no Fundo)'
-            ))
-            fig_window.add_trace(go.Scatter(
-                x=frac_curve, y=depth_steps, mode='lines',
-                fill='tonexty', fillcolor='rgba(16, 185, 129, 0.08)',
-                line=dict(color='rgba(16, 185, 129, 0.3)', width=1),
-                name='Janela Segura'
+                x=frac_curve, y=y_plot, mode='lines',
+                fill='tonextx', fillcolor='rgba(34, 197, 94, 0.12)',
+                line=dict(color='rgba(203, 213, 225, 0.2)', width=0.5),
+                name='Janela Operacional Segura'
             ))
 
-            # 1. Escada da Densidade dos Fluidos no Anular
-            x_escada, y_escada, _ = _gerar_perfil_escada_fluidos(
+            # Curva de Fratura
+            fig_window.add_trace(go.Scatter(
+                x=frac_curve, y=y_plot, mode='lines',
+                line=dict(color='#f8fafc', width=2.8),
+                name='Gradiente de Fratura (LOT)'
+            ))
+
+            # Curva de Poro
+            fig_window.add_trace(go.Scatter(
+                x=poro_curve, y=y_plot, mode='lines',
+                line=dict(color='#ef4444', width=2.3),
+                name='Pressão de Poros (Eaton)'
+            ))
+
+            # 1. Escada Verde de Fluidos e Pastas (Safe Mud Weight)
+            x_escada, y_escada_ft, casing_pts = _gerar_perfil_escada_fluidos(
                 z_max=z_max,
                 z_toc=z_toc,
                 pastas_topo_base=pastas_topo_base,
-                dens_lama=dens_lama
+                dens_lama=dens_lama,
+                sapatas_meta=None,
+                lda_ft=300.0,
+                fator_escala_alturas=fator_escala_alturas
             )
+            y_escada_plot = [y * fator_y for y in y_escada_ft]
             fig_window.add_trace(go.Scatter(
-                x=x_escada, y=y_escada, mode='lines',
-                line=dict(color='#06b6d4', width=3.0),
-                name='🪜 Peso dos Fluidos (Escada)'
+                x=x_escada, y=y_escada_plot, mode='lines',
+                line=dict(color='#22c55e', width=3.4),
+                name='Programa Lama + Pastas (Escada)'
             ))
+
+            if casing_pts:
+                fig_window.add_trace(go.Scatter(
+                    x=[cp["densidade"] for cp in casing_pts],
+                    y=[cp["prof_ft"] * fator_y for cp in casing_pts],
+                    mode='markers',
+                    marker=dict(symbol='triangle-left', size=11, color='#f8fafc', line=dict(color='#0f172a', width=1.5)),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
 
             # 2. Curva EMW Acumulado
             fig_window.add_trace(go.Scatter(
-                x=emw_curve, y=depth_steps, mode='lines',
-                line=dict(color='#38bdf8', width=2.5, dash='dash'),
+                x=emw_curve, y=y_plot, mode='lines',
+                line=dict(color='#38bdf8', width=2.2, dash='dash'),
                 name=f'🌊 EMW Acumulado ({emw_curve[0]:.2f} ➔ {emw_curve[-1]:.2f} ppg)'
             ))
 
-            # Anotações sutis de cotas operacionais (TOC e Sapata)
-            if z_toc > 0:
+            # Anotações dos Casing Points na lateral direita
+            for cp in casing_pts:
+                p_val = cp['prof_ft'] * fator_y
+                diam_s = cp.get('diam', '')
+                p_str = f"{p_val:,.0f}".replace(",", ".") if usar_metros else f"{p_val:,.0f}"
+                lbl = f"Sapata {diam_s} ({p_str} {unid_lbl})"
                 fig_window.add_hline(
-                    y=z_toc, line_dash="dashdot", line_color="#64748b", line_width=1.2,
-                    annotation_text=f"📍 TOC ({z_toc:.0f} ft)",
-                    annotation_position="top left",
-                    annotation_font=dict(size=10, color="#94a3b8")
+                    y=p_val, line_dash="dashdot", line_color="rgba(148, 163, 184, 0.45)", line_width=1.1
                 )
-            h_sapata = params_poco.get('dist_sapata', 40.0)
-            z_sapata = max(0.0, z_max - h_sapata)
-            if z_sapata > z_toc:
-                fig_window.add_hline(
-                    y=z_sapata, line_dash="dot", line_color="#a855f7", line_width=1.0,
-                    annotation_text=f"⚓ Sapata ({z_sapata:.0f} ft)",
-                    annotation_position="bottom left",
-                    annotation_font=dict(size=10, color="#c084fc")
+                fig_window.add_annotation(
+                    x=19.05, y=p_val,
+                    text=f"<b>◀ {lbl}</b>",
+                    showarrow=False,
+                    xanchor="right",
+                    yanchor="bottom",
+                    yshift=3,
+                    bgcolor="rgba(15, 23, 42, 0.85)",
+                    bordercolor="rgba(148, 163, 184, 0.4)",
+                    borderwidth=1,
+                    borderpad=3,
+                    font=dict(size=10, color="#f8fafc", family="JetBrains Mono")
                 )
 
-        if usar_curvas_reais and perfil_real_df is not None:
-            min_x_val = min(7.5, float(np.nanmin(poro_curve)) - 0.5) if len(poro_curve) > 0 and not np.all(np.isnan(poro_curve)) else 7.5
-            max_x_val = max(19.5, float(np.nanmax(frac_curve)) + 0.5) if len(frac_curve) > 0 and not np.all(np.isnan(frac_curve)) else 19.5
-        else:
-            min_x_val = min(8.0, grad_poro_topo - 0.5)
-            max_x_val = max(19.0, grad_frac_alvo + 1.0)
+        min_x_val = 6.5
+        max_x_val = 19.2
 
         fig_window.update_layout(
-            height=460,
+            height=480,
             yaxis=dict(
                 autorange="reversed",
-                title="Profundidade TVD (ft)",
+                title=f"Profundidade Vertical - TVD ({unid_lbl})",
                 title_font=dict(size=13, color="#94a3b8"),
                 tickfont=dict(size=12, family="JetBrains Mono", color="#cbd5e1"),
                 gridcolor="#1e293b",
                 zeroline=False
             ),
             xaxis=dict(
-                title="Densidade Equivalente (ppg)",
+                title="Densidade Equivalente / Gradiente (lbm/gal - ppg)",
                 title_font=dict(size=13, color="#94a3b8"),
                 tickfont=dict(size=12, family="JetBrains Mono", color="#cbd5e1"),
                 gridcolor="#1e293b",

@@ -211,18 +211,85 @@ Documento de registro contínuo de evolução, alterações de código, testes e
 
 ---
 
+---
+
+### [Sessão 14] - Estilização Industrial Clássica do Gráfico Geomecânico (Padrão Bourgoyne Cap. 3 & Casing Points)
+- **Data/Hora:** 2026-09-29 11:50
+- **Solicitação do Usuário:**
+  - O usuário enviou a imagem clássica da literatura de engenharia de petróleo (*Bourgoyne et al. - Applied Drilling Engineering, Cap. 3 - Casing Seat Selection / Safe Mud Weight Window*), indicando que o gráfico do Dashboard deveria seguir exatamente aquele padrão visual profissional.
+- **Implementações Técnicas em [`src/ui/dashboard.py`](./src/ui/dashboard.py):**
+  1. **Faixa Superior de Lâmina d'Água (*Water Depth*):**
+     - Criação do bloco sombreado em azul no topo do gráfico (`fig_window.add_hrect(y0=0, y1=lda_ft)`) com anotação `🌊 Water Depth (Lâmina d'Água)`, sincronizado com o LDA real dos poços do Mar do Norte (ou 450 ft em poço analítico).
+  2. **Curva de Pressão de Poros (*Pressure Prediction*):**
+     - Padronização em vermelho vibrante (`#ef4444`, `🔴 Poros (Pressure Prediction)`), refletindo o comportamento geomecânico das formações perfuradas.
+  3. **Curva de Gradiente de Fratura (*Fracture Gradient Prediction*):**
+     - Padronização em linha de alto contraste (`#cbd5e1`, `⚫ Fratura (Fracture Prediction)`), curvando-se com a profundidade conforme a compactação das rochas.
+  4. **Programa de Fluidos e Pastas em Escada (*Safe Mud Weight*):**
+     - Traçado ortogonal em degraus verdes (`#22c55e`, `width=3.2`, `🟩 Programa de Fluidos (Safe Mud Weight)`), posicionado estrategicamente dentro do corredor seguro entre poros e fratura.
+     - Acompanha as sapatas históricas reais dos poços (ex: 20", 13 3/8", 9 5/8") e as seções de cimentação (Lama até TOC, Lead Slurry intermediária, Tail Slurry de fundo).
+     - No modo analítico, implementados degraus proporcionais de condutor (20"), intermediário (13 3/8"), revestimento de produção (9 5/8" / TOC) e sapata de TD.
+  5. **Marcadores Laterais de Sapata (*Casing Points*):**
+     - Em cada cota de mudança de fase, linhas horizontais pontilhadas associadas a marcadores triangulares `◀ Casing point (XX")` alinhados à margem direita do gráfico, reproduzindo com exatidão a notação da literatura.
+  6. **EMW Acumulado e Janela Segura Integrada:**
+     - Preservação da curva tracejada em azul (`#38bdf8`) para o EMW hidrostático acumulado de toda a coluna de cimento, permitindo dupla verificação: programa pontual de fluidos (*Safe mud weight*) versus pressão dinâmica no poço (*EMW*).
+- **Validação & Testes:**
+  - **28 de 28 testes automatizados aprovados** no teste de auditoria geral (`python tests/test_audit.py`).
+  - Compilação 100% bem-sucedida em todos os módulos Python (`src/`, `app.py`, `tests/`).
+
+---
+
+### [Sessão 15] - Correção de Escala Vertical (`m` vs `ft`), Sincronização de Alturas (Aba 3 ➔ Aba 4) e Janela Geomecânica na Aba 5
+- **Data/Hora:** 2026-10-26 18:22
+- **Diagnóstico Informado pelo Usuário:**
+  - No site em produção, o gráfico da **Aba 5 (Janela Geomecânica)** comprimia a coluna de cimento nos últimos 13,7% do poço (`TOC = 9.196 ft` até `Sapata = 10.656 ft`, apenas `1.460 ft` $\approx$ `445 m`), fazendo com que a curva de **EMW Acumulado** ficasse quase reta/vertical e descolada dos degraus das pastas. Além disso, o eixo X ia até `-3.14 ppg` devido a pontos extrapolados negativos de poro/colapso no CSV bruto do poço 15/9-13.
+- **Correções Implementadas:**
+  1. **Sincronização Automática de Alturas (`m ➔ ft`) entre Aba 1, Aba 3 e Aba 4 ([`src/ui/tab_agente_ia.py`](./src/ui/tab_agente_ia.py), [`src/ui/tabs_pastas.py`](./src/ui/tabs_pastas.py), [`app.py`](./app.py)):**
+     - Inicialização padrão calibrada com o intervalo real do Poço 15/9-13 (`TOC = 1.827 m = 5.994 ft` até `TD = 3.260 m = 10.695 ft`), distribuindo `2.493,4 ft` (`760 m`) para a *Tail Slurry* e `2.208,0 ft` (`673 m`) para a *Lead Slurry* (totalizando `4.701,4 ft = 1.433 m`, 44% do poço).
+     - Ao clicar em **`✨ Aplicar Programa Bi/Tri/Tetra-Pasta no Simulador (Aba 4)`**, o sistema converte automaticamente o intervalo `(prof_base - prof_topo)` de metros para pés ($\times 3{,}28084$) e preenche `dist_1`, `dist_2`, etc. na Aba 4.
+     - Adicionado botão **`📐 Sincronizar Alturas (m ➔ ft)`** e legenda de equivalência métrica em tempo real na Aba 4.
+  2. **Seletor de Unidade Vertical (`📏 Metros (m)` / `📐 Pés (ft)`), Salvaguarda de Escala e Trava Física do Eixo X ([`src/ui/dashboard.py`](./src/ui/dashboard.py)):**
+     - Adicionado seletor **`📏 Metros (m)` | `📐 Pés (ft)`** na Janela Geomecânica da Aba 5 (padrão em Metros, idêntico ao gráfico de validação do Poço 15/9-13 e às Abas 1 e 3).
+     - Salvaguarda automática: se as alturas somadas na Aba 4 forem $< 25\%$ de um poço profundo (ex.: valores digitados na escala numérica de metros como `1460` em vez de `4790 ft`), a projeção gráfica aplica automaticamente a conversão métrica para posicionar o TOC na sapata intermediária real.
+     - Eixo X travado na janela física de engenharia (`6.5 ppg` a `19.2 ppg`), eliminando a distorção horizontal causada por pontos negativos do log sônico extrapolado.
+     - Sapatas `20" (718 m)`, `13 3/8" (1.827 m)` e `9 5/8" (2.701 m)` demarcadas com marcadores triangulares sobre a escada verde e rótulos à direita.
+- **Validação & Testes:**
+  - **29 de 29 testes automatizados aprovados** (`python tests/test_audit.py`), incluindo novo teste específico para a escada geomecânica e sapatas do poço 15/9-13.
+
+---
+
 ## 🎯 Estado Atual do Projeto
 
-- **Status Geral:** ✅ Inversão de empuxo corrigida, novos modais de tela cheia e barra de ferramentas interativas ativados no Dashboard (Aba 5). 28 de 28 testes automatizados aprovados.
+- **Status Geral:** ✅ Pôster Oficial para o 11º Congresso de Graduação USP atualizado (Versão 2 com foco no escopo da Bolsa PUB e Entrada Universal na 1ª Aba) em [`POSTER/Poster_Simulador_Cimentacao_USP_2026_v2.pptx`](./POSTER/Poster_Simulador_Cimentacao_USP_2026_v2.pptx) e [`POSTER/Poster_Simulador_Cimentacao_USP_2026_v2.pdf`](./POSTER/Poster_Simulador_Cimentacao_USP_2026_v2.pdf) (com preview PNG [`POSTER/Preview_Poster_USP_2026.png`](./POSTER/Preview_Poster_USP_2026.png), figuras 300 DPI [`POSTER/fig1_arquitetura_pipeline.png`](./POSTER/fig1_arquitetura_pipeline.png) e [`POSTER/fig2_resultados_cimentacao.png`](./POSTER/fig2_resultados_cimentacao.png), e guia [`POSTER/TEXTO_POSTER_CONGRESSO_USP.md`](./POSTER/TEXTO_POSTER_CONGRESSO_USP.md)). Fontes bibliográficas e DOIs auditados e atualizados em [`01_normas_e_bibliografia.md`](./docs/03_ACADEMICO_E_NORMATIVO/01_normas_e_bibliografia.md). 28 de 28 testes automatizados aprovados.
+- **Ponto de Parada da Sessão:** O usuário solicitou interrupção temporária e pediu para registrar explicitamente as **4 opções técnicas de investigação** sobre a consistência dos resultados e a física do poço para escolha na próxima retomada.
+
+---
+
+## 📌 Ponto de Retomada Prioritário: Opções Técnicas para Escolha do Usuário
+
+Ao retomar os trabalhos na próxima sessão, apresentar e debater com o usuário estas 4 frentes:
+
+1. **Opção 1 — Densidade da Pasta e Balanço de Massa Estequiométrico:**
+   - Auditoria fina da formulação física e química das pastas (Classe G pura em ~15.8 ppg vs alívio com esferas/bentonita para Lead ou densificação com baritina/hematita para Tail conforme API Spec 10A).
+2. **Opção 2 — Pressão Hidrostática Real & EMW Integrado de Fundo:**
+   - Ajustar os cartões SCADA e telemetria no topo do Dashboard para somar a coluna de lama ($0 \rightarrow \text{TOC}$) + coluna de cimento ($\text{TOC} \rightarrow \text{Fundo}$).
+   - Exibir a verdadeira pressão de fundo total (ex: ~5.800–6.000 psi em vez de apenas 1.200 psi do cimento) e o EMW real do poço (ex: ~11.4 ppg), eliminando a impressão de discrepância numérica entre os cards e as curvas.
+3. **Opção 3 — Volume de Calda, Rendimento ($ft^3/sk$) e Quantidade de Sacos ($sk$):**
+   - Auditoria e conferência dos cálculos de cubagem de poço aberto com fator de excesso (*washout*), volume do anular e bolsão de sapata (*shoe track*).
+4. **Opção 4 — Algoritmo Dinâmico de Seleção de Sapatas (*Casing Seat Selection* - Bourgoyne Cap. 3):**
+   - Avaliar a implementação de um recurso que calcula dinamicamente o número ótimo de revestimentos, profundidades das sapatas (*casing points*) e densidades seguras de lama (*Safe mud weight window*) a partir do perfil contínuo de poro e fratura carregado na Aba 1.
+5. **Opção 5 — Conversão `7.48052 gal/ft³` vs `7.5 gal/ft³` e Sincronização de Manuais (`docs/02_SISTEMA_E_IA/`):**
+   - Avaliar padronização do fator `7.48052 gal/ft³` (Bourgoyne Exemplo 3.6, pág. 109) em `src/services/calculadora.py` (atualmente `7.5`) e sincronizar os manuais secundários para refletirem a esteira de 5 abas e a categoria `"Estabilizador Térmico"` em `config.py`.
 
 ---
 
 ## 🚀 Próximos Passos Sugeridos / Backlog
 
-1. **Validação Visual no Navegador Local (`streamlit run app.py`):**
-   - Na Aba 5 (Dashboard), clicar no botão **`⛶ Tela Cheia`** acima da Janela Geomecânica e verificar a expansão do modal em alta resolução.
-   - Testar o zoom, pan e download de imagem da janela geomecânica e do esquemático 2D.
-2. **Deploy e Commit no GitHub:**
-   - Efetuar commit e push das alterações para o repositório oficial e atualização no Streamlit Cloud.
+1. **Retomada Imediata:** Apresentar as 4 opções acima para o usuário indicar qual caminho deseja aprofundar.
+2. **Validação Visual no Navegador Local (`streamlit run app.py`):**
+   - Acessar a Aba 5 (Dashboard) e conferir a sintonia estética da Janela Geomecânica com o diagrama de referência de campo.
+   - Testar o botão **`⛶ Tela Cheia`** para inspecionar a escala e o alinhamento dos Casing Points.
+3. **Deploy e Commit no GitHub:**
+   - Efetuar commit e push das melhorias visuais para o repositório do GitHub.
+
 
 

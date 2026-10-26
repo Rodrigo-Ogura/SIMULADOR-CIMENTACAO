@@ -230,14 +230,31 @@ except Exception as e:
     falhas.append(f"Erro em Prompts/Parser: {e}")
 
 # ── TESTE 6: INTEGRIDADE DE CONFIG E LIMITES FÍSICOS ──
-print("\n--- TESTE 6: Limites Físicos e Configurações Globais ---")
+print("\n--- TESTE 6: Limites Físicos, Escada Geomecânica e Configurações Globais ---")
 try:
     for cat_nome, (l_min, l_max) in LIMITES_FISICOS_DOSAGEM.items():
         assert l_min > 0, f"Limite mínimo de {cat_nome} deve ser > 0"
         assert l_max > l_min, f"Limite máximo de {cat_nome} deve ser maior que o mínimo"
     registrar_teste("Matriz de limites físicos de dosagem consistente", True)
+
+    from src.ui.dashboard import _gerar_perfil_escada_fluidos
+    z_max_13 = 3260.0 * 3.28084
+    z_toc_13 = 1827.0 * 3.28084
+    pastas_tb = [
+        {"densidade": 12.60, "altura": 673.0 * 3.28084},
+        {"densidade": 15.80, "altura": 760.0 * 3.28084},
+    ]
+    x_esc, y_esc, c_pts = _gerar_perfil_escada_fluidos(
+        z_max=z_max_13, z_toc=z_toc_13, pastas_topo_base=pastas_tb, dens_lama=10.85, lda_ft=81.0 * 3.28084
+    )
+    diams_pts = [cp["diam"] for cp in c_pts]
+    registrar_teste(
+        "Escada Geomecânica 15/9-13 com Sapatas 20\", 13 3/8\" e 9 5/8\" na escala correta",
+        len(x_esc) == len(y_esc) and '20"' in diams_pts and '13 3/8"' in diams_pts and '9 5/8"' in diams_pts,
+        f"Casing points: {diams_pts}"
+    )
 except Exception as e:
-    falhas.append(f"Erro em limites físicos: {e}")
+    falhas.append(f"Erro em limites físicos/escada: {e}")
 
 print("\n" + "=" * 60)
 print(f"RELATÓRIO FINAL: {len(sucessos)} TESTES PASSARAM | {len(falhas)} FALHAS")

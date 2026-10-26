@@ -227,7 +227,7 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             with c_ia_s2:
                 if st.button("🪄 Sincronizar com Perfil da Aba 1", key="btn_sync_ia_profile", type="primary", use_container_width=True):
                     p_base = p_base_est
-                    p_topo = float(max(0.0, p_base - 1000.0))
+                    p_topo = 1827.0 if abs(p_base - 3260.0) < 50.0 else float(round(p_base * 0.56, 0))
                     g_poro = g_poro_est
                     g_frac = g_frac_est
                     
@@ -787,24 +787,41 @@ def render_tab_agente_ia(aditivos_db: Dict[str, dict], total_pastas: int = 2):
             st.success(st.session_state.pop("msg_sucesso_prog"))
 
         def _aplicar_programa_multi_callback():
+            p_base_m = float(st.session_state.get("ia_base", 3260.0))
+            p_topo_m = float(st.session_state.get("ia_topo", 1827.0))
+            h_total_m = max(300.0, p_base_m - p_topo_m)
+            h_total_ft = round(h_total_m * 3.28084, 1)
+
             if tipo_prog == "tetra":
                 st.session_state["num_pastas_anular"] = 4
+                st.session_state["dist_1"] = round(h_total_ft * 0.30, 1)
+                st.session_state["dist_2"] = round(h_total_ft * 0.30, 1)
+                st.session_state["dist_3"] = round(h_total_ft * 0.25, 1)
+                st.session_state["dist_4"] = round(h_total_ft - st.session_state["dist_1"] - st.session_state["dist_2"] - st.session_state["dist_3"], 1)
                 _aplicar_formulacao_em_pasta(1, res_tail, aditivos_db)
                 _aplicar_formulacao_em_pasta(2, res_mid, aditivos_db)
                 _aplicar_formulacao_em_pasta(3, res_lead, aditivos_db)
                 _aplicar_formulacao_em_pasta(4, res_scav, aditivos_db)
-                st.session_state["msg_sucesso_prog"] = "✨ Programa Tetra-Pasta Aplicado! Pastas 1 (Tail), 2 (Intermediária), 3 (Lead) e 4 (Varredura) foram configuradas na Aba 4."
+                st.session_state["msg_sucesso_prog"] = f"✨ Programa Tetra-Pasta Aplicado! Alturas sincronizadas ({h_total_m:.0f} m = {h_total_ft:,.0f} ft) e Pastas 1 a 4 configuradas na Aba 4."
             elif tipo_prog == "tri":
                 st.session_state["num_pastas_anular"] = 3
+                st.session_state["dist_1"] = round(h_total_ft * 0.30, 1)
+                st.session_state["dist_2"] = round(h_total_ft * 0.35, 1)
+                st.session_state["dist_3"] = round(h_total_ft - st.session_state["dist_1"] - st.session_state["dist_2"], 1)
                 _aplicar_formulacao_em_pasta(1, res_tail, aditivos_db)
                 _aplicar_formulacao_em_pasta(2, res_mid, aditivos_db)
                 _aplicar_formulacao_em_pasta(3, res_lead, aditivos_db)
-                st.session_state["msg_sucesso_prog"] = "✨ Programa Tri-Pasta Aplicado! Pastas 1 (Tail), 2 (Intermediária) e 3 (Lead) foram configuradas na Aba 4."
+                st.session_state["msg_sucesso_prog"] = f"✨ Programa Tri-Pasta Aplicado! Alturas sincronizadas ({h_total_m:.0f} m = {h_total_ft:,.0f} ft) e Pastas 1 a 3 configuradas na Aba 4."
             else:
                 st.session_state["num_pastas_anular"] = 2
+                st.session_state["dist_1"] = round(h_total_ft * 0.5303, 1)
+                st.session_state["dist_2"] = round(h_total_ft - st.session_state["dist_1"], 1)
                 _aplicar_formulacao_em_pasta(1, res_tail, aditivos_db)
                 _aplicar_formulacao_em_pasta(2, res_lead, aditivos_db)
-                st.session_state["msg_sucesso_prog"] = "✨ Programa Bi-Pasta Aplicado! Pasta 1 (Tail) e Pasta 2 (Lead) foram configuradas na Aba 4."
+                st.session_state["msg_sucesso_prog"] = (
+                    f"✨ Programa Bi-Pasta Aplicado! Intervalo {p_topo_m:.0f}m–{p_base_m:.0f}m ({h_total_m:.0f} m = {h_total_ft:,.0f} ft) "
+                    f"distribuído em Tail ({st.session_state['dist_1']:,.0f} ft) e Lead ({st.session_state['dist_2']:,.0f} ft) na Aba 4."
+                )
 
         col_btn_all, _ = st.columns([2.5, 1.5])
         with col_btn_all:

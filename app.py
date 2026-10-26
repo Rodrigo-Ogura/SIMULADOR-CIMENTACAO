@@ -26,15 +26,15 @@ if 'aditivos_db' not in st.session_state:
     st.session_state.aditivos_db = AditivoService.inicializar_banco()
 
 if 'ia_dens_lama' not in st.session_state:
-    st.session_state['ia_topo'] = 1800.0
-    st.session_state['ia_base'] = 3200.0
-    st.session_state['ia_poro'] = 10.20
-    st.session_state['ia_frac'] = 16.80
-    st.session_state['ia_dens_lama'] = 10.60
+    st.session_state['ia_topo'] = 1827.0
+    st.session_state['ia_base'] = 3260.0
+    st.session_state['ia_poro'] = 9.28
+    st.session_state['ia_frac'] = 16.12
+    st.session_state['ia_dens_lama'] = 10.85
     st.session_state['ia_dmin'] = 15.60
     st.session_state['ia_dmax'] = 16.20
-    st.session_state['ia_bhst'] = 115.0
-    st.session_state['ia_bhct'] = 75.0
+    st.session_state['ia_bhst'] = 113.0
+    st.session_state['ia_bhct'] = 73.5
     st.session_state['ia_tbomb'] = 150
     st.session_state['ia_perm'] = True
     st.session_state['ia_gas'] = False
@@ -55,7 +55,18 @@ if 'perfil_geomecanico_ativo' not in st.session_state:
         pass
 
 if 'num_pastas_anular' not in st.session_state:
-    st.session_state['num_pastas_anular'] = 1
+    st.session_state['num_pastas_anular'] = 2
+    # Inicializa Programa Bi-Pasta canônico na escala real do Poço 15/9-13 (TOC = 1.827 m / 5.994 ft até TD = 3.260 m / 10.695 ft)
+    st.session_state['dist_1'] = 2493.4
+    st.session_state['classe_1'] = 'G'
+    st.session_state['aditivos_selecionados_1'] = {'Cloreto de Cálcio (CaCl2)'}
+    st.session_state['pct_Cloreto de Cálcio (CaCl2)_1'] = 2.0
+    st.session_state['dist_2'] = 2208.0
+    st.session_state['classe_2'] = 'G'
+    st.session_state['chk_agua_2'] = True
+    st.session_state['agua_2'] = 13.48
+    st.session_state['aditivos_selecionados_2'] = {'Bentonita (Gel)'}
+    st.session_state['pct_Bentonita (Gel)_2'] = 16.0
 
 if 'param_d_broca' not in st.session_state:
     st.session_state['param_d_broca'] = 17.000

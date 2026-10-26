@@ -23,7 +23,7 @@ def render_config_pastas(aditivos_db: Dict[str, dict]) -> List[ConfigPasta]:
     if "programa_completo_ia" in st.session_state or "ultima_recomendacao_ia" in st.session_state:
         st.info("💡 **Formulação Pré-Configurada via IA:** Os parâmetros e aditivos abaixo foram importados do **Módulo Especialista (Aba 3)**. Você pode ajustar livremente dosagens (% BWOC), alturas e volumes.")
 
-    col_qp, col_info = st.columns([1.2, 2.8])
+    col_qp, col_info, col_sync_h = st.columns([1.1, 2.0, 1.3], vertical_alignment="center")
     with col_qp:
         quantidade_pastas = st.number_input(
             "Número de Pastas no Anular:",
@@ -35,13 +35,36 @@ def render_config_pastas(aditivos_db: Dict[str, dict]) -> List[ConfigPasta]:
         )
 
     with col_info:
-        if quantidade_pastas > 1:
-            st.markdown("""
-            <div style="background-color: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 14px; margin-top: 18px;">
-                <span style="color: #38bdf8; font-weight: 600; font-size: 0.85rem;">ℹ️ CONVENÇÃO DE POÇO:</span>
-                <span style="color: #94a3b8; font-size: 0.85rem;">As pastas são empilhadas de baixo para cima (Pasta 1 = Sapata/Fundo; Pasta N = Topo/Superfície).</span>
-            </div>
-            """, unsafe_allow_html=True)
+        p_topo_ref = float(st.session_state.get("ia_topo", 1827.0))
+        p_base_ref = float(st.session_state.get("ia_base", 3260.0))
+        h_ref_m = max(300.0, p_base_ref - p_topo_ref)
+        h_ref_ft = h_ref_m * 3.28084
+        st.markdown(f"""
+        <div style="background-color: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 14px; margin-top: 14px;">
+            <span style="color: #38bdf8; font-weight: 600; font-size: 0.82rem;">ℹ️ INTERVALO DE REFERÊNCIA (ABA 3):</span>
+            <span style="color: #cbd5e1; font-size: 0.82rem; font-family: 'JetBrains Mono';"> {p_topo_ref:.0f} m ➔ {p_base_ref:.0f} m (<b>{h_ref_m:.0f} m = {h_ref_ft:,.0f} ft</b>)</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_sync_h:
+        st.write("")
+        if st.button("📐 Sincronizar Alturas (m ➔ ft)", key="btn_sync_alturas_aba4", help="Converte e distribui o intervalo (Base - Topo) da Aba 3 em pés (ft) entre as pastas ativas.", use_container_width=True):
+            qtd_p = int(st.session_state.get("num_pastas_anular", 2))
+            if qtd_p == 1:
+                st.session_state["dist_1"] = round(h_ref_ft, 1)
+            elif qtd_p == 2:
+                st.session_state["dist_1"] = round(h_ref_ft * 0.5303, 1)
+                st.session_state["dist_2"] = round(h_ref_ft - st.session_state["dist_1"], 1)
+            elif qtd_p == 3:
+                st.session_state["dist_1"] = round(h_ref_ft * 0.30, 1)
+                st.session_state["dist_2"] = round(h_ref_ft * 0.35, 1)
+                st.session_state["dist_3"] = round(h_ref_ft - st.session_state["dist_1"] - st.session_state["dist_2"], 1)
+            else:
+                st.session_state["dist_1"] = round(h_ref_ft * 0.30, 1)
+                st.session_state["dist_2"] = round(h_ref_ft * 0.30, 1)
+                st.session_state["dist_3"] = round(h_ref_ft * 0.25, 1)
+                st.session_state["dist_4"] = round(h_ref_ft - st.session_state["dist_1"] - st.session_state["dist_2"] - st.session_state["dist_3"], 1)
+            st.rerun()
 
     def _rotulo_pasta(idx: int, total: int) -> str:
         if total == 1:
@@ -99,12 +122,13 @@ def render_config_pastas(aditivos_db: Dict[str, dict]) -> List[ConfigPasta]:
                 with c_p1:
                     dist_fundo = st.number_input(
                         "Altura da Seção no Anular (ft):",
-                        value=1000.0 if idx == 1 else 500.0,
+                        value=2493.4 if idx == 1 else 2208.0,
                         format="%.1f",
                         step=100.0,
                         key=f"dist_{idx}",
-                        help="Comprimento vertical preenchido por esta pasta no anular."
+                        help="Comprimento vertical preenchido por esta pasta no anular (1 m = 3.28084 ft)."
                     )
+                    st.caption(f"📏 Equivalência métrica: **{dist_fundo * 0.3048:,.1f} m** ({dist_fundo:,.1f} ft)")
                 with c_p2:
                     classe_cimento = st.selectbox(
                         "Classe do Cimento API (Spec 10A):",
