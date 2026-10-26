@@ -653,31 +653,34 @@ div[data-testid="stToggle"] {{
                 p_base_aba3 = float(st.session_state.get("ia_base", 3260.0))
                 h_alvo_m = max(300.0, p_base_aba3 - p_topo_aba3)
                 h_alvo_ft = round(h_alvo_m * 3.28084, 1)
-                if st.button(
+
+                def _sync_alturas_aba5_callback(h_ft: float = h_alvo_ft, n_res: int = len(resultados_finais)):
+                    qtd_p = int(st.session_state.get("num_pastas_anular", n_res))
+                    if qtd_p <= 1:
+                        st.session_state["num_pastas_anular"] = 2
+                        st.session_state["dist_1"] = round(h_ft * 0.5303, 1)
+                        st.session_state["dist_2"] = round(h_ft - st.session_state["dist_1"], 1)
+                    elif qtd_p == 2:
+                        st.session_state["dist_1"] = round(h_ft * 0.5303, 1)
+                        st.session_state["dist_2"] = round(h_ft - st.session_state["dist_1"], 1)
+                    elif qtd_p == 3:
+                        st.session_state["dist_1"] = round(h_ft * 0.30, 1)
+                        st.session_state["dist_2"] = round(h_ft * 0.35, 1)
+                        st.session_state["dist_3"] = round(h_ft - st.session_state["dist_1"] - st.session_state["dist_2"], 1)
+                    else:
+                        st.session_state["dist_1"] = round(h_ft * 0.30, 1)
+                        st.session_state["dist_2"] = round(h_ft * 0.30, 1)
+                        st.session_state["dist_3"] = round(h_ft * 0.25, 1)
+                        st.session_state["dist_4"] = round(h_ft - st.session_state["dist_1"] - st.session_state["dist_2"] - st.session_state["dist_3"], 1)
+
+                st.button(
                     "📐 Sincronizar Alturas (m ➔ ft)",
                     key="btn_sync_alturas_aba5",
                     type="primary",
+                    on_click=_sync_alturas_aba5_callback,
                     help=f"Ajusta automaticamente as alturas das pastas para cobrir o intervalo {p_topo_aba3:.0f}m–{p_base_aba3:.0f}m ({h_alvo_m:.0f} m = {h_alvo_ft:,.0f} ft).",
                     use_container_width=True
-                ):
-                    qtd_p = int(st.session_state.get("num_pastas_anular", len(resultados_finais)))
-                    if qtd_p <= 1:
-                        st.session_state["num_pastas_anular"] = 2
-                        st.session_state["dist_1"] = round(h_alvo_ft * 0.5303, 1)
-                        st.session_state["dist_2"] = round(h_alvo_ft - st.session_state["dist_1"], 1)
-                    elif qtd_p == 2:
-                        st.session_state["dist_1"] = round(h_alvo_ft * 0.5303, 1)
-                        st.session_state["dist_2"] = round(h_alvo_ft - st.session_state["dist_1"], 1)
-                    elif qtd_p == 3:
-                        st.session_state["dist_1"] = round(h_alvo_ft * 0.30, 1)
-                        st.session_state["dist_2"] = round(h_alvo_ft * 0.35, 1)
-                        st.session_state["dist_3"] = round(h_alvo_ft - st.session_state["dist_1"] - st.session_state["dist_2"], 1)
-                    else:
-                        st.session_state["dist_1"] = round(h_alvo_ft * 0.30, 1)
-                        st.session_state["dist_2"] = round(h_alvo_ft * 0.30, 1)
-                        st.session_state["dist_3"] = round(h_alvo_ft * 0.25, 1)
-                        st.session_state["dist_4"] = round(h_alvo_ft - st.session_state["dist_1"] - st.session_state["dist_2"] - st.session_state["dist_3"], 1)
-                    st.rerun()
+                )
             with c_ctrl3:
                 if perfil_real_df is not None:
                     usar_curvas_reais = st.toggle("🌐 Curvas Reais", value=True, key="tog_curvas_reais_dash")

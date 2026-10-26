@@ -48,23 +48,30 @@ def render_config_pastas(aditivos_db: Dict[str, dict]) -> List[ConfigPasta]:
 
     with col_sync_h:
         st.write("")
-        if st.button("📐 Sincronizar Alturas (m ➔ ft)", key="btn_sync_alturas_aba4", help="Converte e distribui o intervalo (Base - Topo) da Aba 3 em pés (ft) entre as pastas ativas.", use_container_width=True):
+        def _sync_alturas_aba4_callback(h_ft: float = h_ref_ft):
             qtd_p = int(st.session_state.get("num_pastas_anular", 2))
             if qtd_p == 1:
-                st.session_state["dist_1"] = round(h_ref_ft, 1)
+                st.session_state["dist_1"] = round(h_ft, 1)
             elif qtd_p == 2:
-                st.session_state["dist_1"] = round(h_ref_ft * 0.5303, 1)
-                st.session_state["dist_2"] = round(h_ref_ft - st.session_state["dist_1"], 1)
+                st.session_state["dist_1"] = round(h_ft * 0.5303, 1)
+                st.session_state["dist_2"] = round(h_ft - st.session_state["dist_1"], 1)
             elif qtd_p == 3:
-                st.session_state["dist_1"] = round(h_ref_ft * 0.30, 1)
-                st.session_state["dist_2"] = round(h_ref_ft * 0.35, 1)
-                st.session_state["dist_3"] = round(h_ref_ft - st.session_state["dist_1"] - st.session_state["dist_2"], 1)
+                st.session_state["dist_1"] = round(h_ft * 0.30, 1)
+                st.session_state["dist_2"] = round(h_ft * 0.35, 1)
+                st.session_state["dist_3"] = round(h_ft - st.session_state["dist_1"] - st.session_state["dist_2"], 1)
             else:
-                st.session_state["dist_1"] = round(h_ref_ft * 0.30, 1)
-                st.session_state["dist_2"] = round(h_ref_ft * 0.30, 1)
-                st.session_state["dist_3"] = round(h_ref_ft * 0.25, 1)
-                st.session_state["dist_4"] = round(h_ref_ft - st.session_state["dist_1"] - st.session_state["dist_2"] - st.session_state["dist_3"], 1)
-            st.rerun()
+                st.session_state["dist_1"] = round(h_ft * 0.30, 1)
+                st.session_state["dist_2"] = round(h_ft * 0.30, 1)
+                st.session_state["dist_3"] = round(h_ft * 0.25, 1)
+                st.session_state["dist_4"] = round(h_ft - st.session_state["dist_1"] - st.session_state["dist_2"] - st.session_state["dist_3"], 1)
+
+        st.button(
+            "📐 Sincronizar Alturas (m ➔ ft)",
+            key="btn_sync_alturas_aba4",
+            on_click=_sync_alturas_aba4_callback,
+            help="Converte e distribui o intervalo (Base - Topo) da Aba 3 em pés (ft) entre as pastas ativas.",
+            use_container_width=True
+        )
 
     def _rotulo_pasta(idx: int, total: int) -> str:
         if total == 1:
