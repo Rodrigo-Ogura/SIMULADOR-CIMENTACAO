@@ -427,7 +427,7 @@ div[data-testid="stToggle"] {{
             ))
 
             # No modo didático, adiciona cota vertical com setas e texto à esquerda (estilo slide Profa. Nara)
-            if modo_escala == "📘 Didático (Visão Clara)":
+            if modo_escala.startswith("📘 Didático"):
                 x_cota_esq = -r_hole - 0.7
                 y_mid = (y_top + y_bottom) / 2
                 
@@ -503,20 +503,20 @@ div[data-testid="stToggle"] {{
         # Linhas de referência horizontais locais
         fig_schema.add_shape(
             type="line",
-            x0=-r_casing_id, x1=r_hole + (1.2 if modo_escala == "📘 Didático (Visão Clara)" else 0.5),
+            x0=-r_casing_id, x1=r_hole + (1.2 if modo_escala.startswith("📘 Didático") else 0.5),
             y0=y_colar_visual, y1=y_colar_visual,
             line=dict(color="#f59e0b", width=1.5, dash="dot")
         )
 
         fig_schema.add_shape(
             type="line",
-            x0=-r_hole, x1=r_hole + (1.2 if modo_escala == "📘 Didático (Visão Clara)" else 0.5),
+            x0=-r_hole, x1=r_hole + (1.2 if modo_escala.startswith("📘 Didático") else 0.5),
             y0=prof_base, y1=prof_base,
             line=dict(color="#ef4444", width=2)
         )
 
         # Cotas do Bolsão de Sapata e Rótulos à Direita
-        if modo_escala == "📘 Didático (Visão Clara)":
+        if modo_escala.startswith("📘 Didático"):
             x_cota_dir = r_hole + 1.2
             y_mid_sapata = (y_colar_visual + prof_base) / 2
 
@@ -637,37 +637,53 @@ div[data-testid="stToggle"] {{
         with c_btn_pw:
             btn_tela_cheia_janela = st.button("⛶ Tela Cheia", key="btn_modal_janela", help="Visualizar a janela geomecânica e EMW em tela cheia com alta resolução.", use_container_width=True)
 
-        if perfil_real_df is not None:
-            c_sub_pw, c_unid_pw, c_tog_pw = st.columns([1.25, 1.15, 0.90], vertical_alignment="center")
-            with c_sub_pw:
-                st.caption(f"Perfil: **{fonte_geomec}**" if st.session_state.get("tog_curvas_reais_dash", True) else "Perfil analítico (Aba 3):")
-            with c_unid_pw:
-                unid_prof_janela = st.segmented_control(
-                    "Unidade Vertical",
+        # Barra de Controles de Escala e Unidade diretamente na Aba 5 (visível e destacada)
+        with st.container(border=True):
+            c_ctrl1, c_ctrl2, c_ctrl3 = st.columns([1.35, 1.35, 0.95], vertical_alignment="center")
+            with c_ctrl1:
+                unid_prof_janela = st.radio(
+                    "📏 Escala Vertical (Eixo Y):",
                     options=["📏 Metros (m)", "📐 Pés (ft)"],
-                    default="📏 Metros (m)",
-                    key="seg_unid_prof_janela",
-                    label_visibility="collapsed"
+                    index=0,
+                    horizontal=True,
+                    key="radio_unid_prof_janela"
                 )
-                if not unid_prof_janela:
-                    unid_prof_janela = "📏 Metros (m)"
-            with c_tog_pw:
-                usar_curvas_reais = st.toggle("🌐 Curvas Reais", value=True, key="tog_curvas_reais_dash")
-        else:
-            usar_curvas_reais = False
-            c_sub_pw, c_unid_pw = st.columns([1.6, 1.1], vertical_alignment="center")
-            with c_sub_pw:
-                st.caption("Perfil dinâmico da coluna hidrostática versus limites geomecânicos (Aba 3):")
-            with c_unid_pw:
-                unid_prof_janela = st.segmented_control(
-                    "Unidade Vertical",
-                    options=["📏 Metros (m)", "📐 Pés (ft)"],
-                    default="📏 Metros (m)",
-                    key="seg_unid_prof_janela",
-                    label_visibility="collapsed"
-                )
-                if not unid_prof_janela:
-                    unid_prof_janela = "📏 Metros (m)"
+            with c_ctrl2:
+                p_topo_aba3 = float(st.session_state.get("ia_topo", 1827.0))
+                p_base_aba3 = float(st.session_state.get("ia_base", 3260.0))
+                h_alvo_m = max(300.0, p_base_aba3 - p_topo_aba3)
+                h_alvo_ft = round(h_alvo_m * 3.28084, 1)
+                if st.button(
+                    "📐 Sincronizar Alturas (m ➔ ft)",
+                    key="btn_sync_alturas_aba5",
+                    type="primary",
+                    help=f"Ajusta automaticamente as alturas das pastas para cobrir o intervalo {p_topo_aba3:.0f}m–{p_base_aba3:.0f}m ({h_alvo_m:.0f} m = {h_alvo_ft:,.0f} ft).",
+                    use_container_width=True
+                ):
+                    qtd_p = int(st.session_state.get("num_pastas_anular", len(resultados_finais)))
+                    if qtd_p <= 1:
+                        st.session_state["num_pastas_anular"] = 2
+                        st.session_state["dist_1"] = round(h_alvo_ft * 0.5303, 1)
+                        st.session_state["dist_2"] = round(h_alvo_ft - st.session_state["dist_1"], 1)
+                    elif qtd_p == 2:
+                        st.session_state["dist_1"] = round(h_alvo_ft * 0.5303, 1)
+                        st.session_state["dist_2"] = round(h_alvo_ft - st.session_state["dist_1"], 1)
+                    elif qtd_p == 3:
+                        st.session_state["dist_1"] = round(h_alvo_ft * 0.30, 1)
+                        st.session_state["dist_2"] = round(h_alvo_ft * 0.35, 1)
+                        st.session_state["dist_3"] = round(h_alvo_ft - st.session_state["dist_1"] - st.session_state["dist_2"], 1)
+                    else:
+                        st.session_state["dist_1"] = round(h_alvo_ft * 0.30, 1)
+                        st.session_state["dist_2"] = round(h_alvo_ft * 0.30, 1)
+                        st.session_state["dist_3"] = round(h_alvo_ft * 0.25, 1)
+                        st.session_state["dist_4"] = round(h_alvo_ft - st.session_state["dist_1"] - st.session_state["dist_2"] - st.session_state["dist_3"], 1)
+                    st.rerun()
+            with c_ctrl3:
+                if perfil_real_df is not None:
+                    usar_curvas_reais = st.toggle("🌐 Curvas Reais", value=True, key="tog_curvas_reais_dash")
+                else:
+                    usar_curvas_reais = False
+                    st.caption("Modo Analítico")
 
         usar_metros = unid_prof_janela.startswith("📏")
         fator_y = 0.3048 if usar_metros else 1.0
